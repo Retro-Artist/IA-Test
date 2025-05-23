@@ -1,69 +1,78 @@
 <?php
-
 /**
- * Simple PHP Initialization
- * A minimal Docker environment for PHP 8.4.7 development
+ * AI-Powered PHP Environment - Clean Integration
+ * Environment loading handled by .env only
  */
 
-// Setup database connection and fetch necessary data
-function setupDatabaseConnection()
-{
-    $config = [
-        'host' => getenv('DB_HOST') ?: 'localhost',
-        'dbname' => getenv('DB_DATABASE') ?: 'simple_php',
-        'username' => getenv('DB_USERNAME') ?: 'root',
-        'password' => getenv('DB_PASSWORD') ?: 'root_password',
-    ];
+// Include necessary files with absolute paths
+require_once __DIR__ . '/../src/Model/ModelContextProtocol.php';
+require_once __DIR__ . '/../src/Model/Tool.php';
+require_once __DIR__ . '/../src/Model/Guardrail.php';
+require_once __DIR__ . '/../src/Model/SampleTools.php';
 
-    $result = [
-        'connection' => null,
-        'connected' => false,
-        'error' => null,
-        'notes' => [],
-        'tableExists' => false,
-        'mysqlVersion' => null,
-        'dbname' => $config['dbname']
-    ];
+// Load configuration
+$config = require_once __DIR__ . '/../config/config.php';
 
-    try {
-        // Try to connect (max 3 attempts)
-        for ($i = 0; $i < 3; $i++) {
-            try {
-                $dsn = "mysql:host={$config['host']};dbname={$config['dbname']}";
-                $result['connection'] = new PDO($dsn, $config['username'], $config['password'], [
-                    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
-                ]);
-                $result['connected'] = true;
-
-                // Check for notes table and fetch data
-                if ($result['connection']->query("SHOW TABLES LIKE 'notes'")->rowCount() > 0) {
-                    $result['tableExists'] = true;
-                    $result['notes'] = $result['connection']->query("SELECT * FROM notes ORDER BY created_at DESC")
-                        ->fetchAll(PDO::FETCH_ASSOC);
-                }
-
-                // Get MySQL version
-                $result['mysqlVersion'] = $result['connection']->query('SELECT version()')->fetchColumn();
-                break;
-            } catch (PDOException $e) {
-                if (strpos($e->getMessage(), 'Unknown database') !== false) {
-                    $result['error'] = "Database \"{$config['dbname']}\" does not exist yet!";
-                    break;
-                }
-
-                if ($i === 2) throw $e; // Last attempt failed
-                sleep(1); // Wait before retry
-            }
-        }
-    } catch (PDOException $e) {
-        $result['error'] = 'Database connection failed: ' . $e->getMessage();
+// Handle AJAX requests for AI chat
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'chat') {
+    header('Content-Type: application/json');
+    
+    $userInput = $_POST['message'] ?? '';
+    
+    if (empty($userInput)) {
+        echo json_encode(['error' => 'No message provided']);
+        exit;
     }
+    
+    try {
+        // Create ModelContextProtocol instance (exactly like example1.php)
+        $mcp = new ModelContextProtocol($config);
 
-    return $result;
+        // Add instructions (same as example1.php)
+        $mcp->addInstruction("You are a helpful assistant that provides information and performs tasks.");
+        $mcp->addInstruction("Always be polite and concise in your responses.");
+        $mcp->addInstruction("If you're unsure about something, acknowledge your uncertainty.");
+        $mcp->addInstruction("Use the tools available to you when appropriate to answer questions.");
+
+        // Add tools (same as example1.php)
+        $mcp->addTool(new WeatherTool());
+        $mcp->addTool(new CalculatorTool());
+        $mcp->addTool(new SearchTool());
+
+        // Add guardrails (same as example1.php)
+        $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
+        $mcp->addGuardrail(new KeywordGuardrail(
+            ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'], 
+            "I cannot process requests related to system exploitation or unauthorized access."
+        ));
+
+        // Add context (similar to example1.php)
+        $mcp->addContext('interface', 'web');
+        $mcp->addContext('current_date', date('Y-m-d'));
+
+        // Get response (same as example1.php)
+        $response = $mcp->run($userInput);
+        
+        echo json_encode(['response' => $response]);
+        
+    } catch (Exception $e) {
+        echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
+    }
+    
+    exit;
 }
 
-// Get database connection and data
-$db = setupDatabaseConnection();
+// Simple database status check
+$dbStatus = 'Not configured';
+if (getenv('DB_HOST')) {
+    try {
+        $dsn = sprintf("mysql:host=%s;dbname=%s", getenv('DB_HOST'), getenv('DB_DATABASE'));
+        $pdo = new PDO($dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
+        $dbStatus = 'Connected';
+    } catch (PDOException $e) {
+        $dbStatus = 'Connection failed';
+    }
+}
 
 ?>
 <!DOCTYPE html>
@@ -72,291 +81,189 @@ $db = setupDatabaseConnection();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple PHP Initialization</title>
+    <title>AI-Powered PHP Environment</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Add Font Awesome for icons -->
     <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 
-<body class="bg-php-50 text-php-800">
-    <div class="max-w-5xl mx-auto p-6">
-        <header class="pb-4 border-b border-php-200 mb-6">
-            <h1 class="text-3xl font-bold text-php-900">Simple PHP Initialization</h1>
-            <p class="text-lg text-php-600">Your PHP <?= phpversion() ?> environment is ready!</p>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
+    <div class="max-w-6xl mx-auto p-6">
+        <header class="text-center pb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">
+                <i class="fas fa-robot text-blue-600 mr-3"></i>
+                AI-Powered PHP Environment
+            </h1>
+            <p class="text-lg text-gray-600">PHP <?= phpversion() ?> with OpenAI Integration</p>
         </header>
 
-        <div class="grid md:grid-cols-2 gap-6 mb-6">
-            <!-- Environment Info -->
-            <div class="bg-white rounded-md shadow-sm border border-php-200">
-                <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                    <i class="fas fa-circle-info mr-2"></i> Environment Information
-                </div>
-                <ul class="divide-y divide-php-100 p-0">
-                    <li class="p-3 text-php-700">PHP Version: <span class="text-php-900 font-medium"><?= phpversion() ?></span></li>
-                    <li class="p-3 text-php-700">Web Server: <span class="text-php-900 font-medium"><?= $_SERVER['SERVER_SOFTWARE'] ?></span></li>
-                    <li class="p-3 text-php-700">Document Root: <span class="text-php-900 font-medium"><?= $_SERVER['DOCUMENT_ROOT'] ?></span></li>
-                    <li class="p-3 text-php-700">Server Protocol: <span class="text-php-900 font-medium"><?= $_SERVER['SERVER_PROTOCOL'] ?></span></li>
-                </ul>
+        <!-- AI Chat Interface -->
+        <div class="bg-white rounded-xl shadow-lg mb-8 overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4">
+                <h2 class="text-xl font-semibold flex items-center">
+                    <i class="fas fa-comments mr-3"></i>
+                    AI Assistant
+                </h2>
+                <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - try asking about weather, calculations, or searches</p>
             </div>
-
-            <!-- Database Connection -->
-            <div class="bg-white rounded-md shadow-sm border border-php-200">
-                <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                    <i class="fas fa-database mr-2"></i> Database Connection
+            
+            <div class="p-6">
+                <div id="chatMessages" class="h-96 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
+                    <div class="text-gray-500 text-center py-8">
+                        <i class="fas fa-robot text-4xl mb-4 text-gray-400"></i>
+                        <p>Hello! I'm your AI assistant with weather, calculator, and search tools.</p>
+                        <p class="text-sm mt-2">Try: "What's the weather in Paris?" or "Calculate 25 * 4"</p>
+                    </div>
                 </div>
-                <div class="p-4">
-                    <?php if ($db['connected']): ?>
-                        <div class="bg-green-50 border border-green-200 text-green-700 p-3 rounded-md mb-3">
-                            Database connection successful!
-                        </div>
-                        <p class="text-php-700">Connected to database: <strong class="text-php-900"><?= htmlspecialchars($db['dbname']) ?></strong></p>
-                        <?php if ($db['mysqlVersion']): ?>
-                            <p class="text-php-700">MySQL version: <strong class="text-php-900"><?= htmlspecialchars($db['mysqlVersion']) ?></strong></p>
-                        <?php endif; ?>
-                    <?php elseif (isset($db['error']) && strpos($db['error'], 'does not exist yet') !== false): ?>
-                        <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded mb-3">
-                           <?= htmlspecialchars($db['error']) ?>
-                        </div>
-                        <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md">
-                            <h4 class="font-medium mb-3 text-red-800 flex items-center">
-                                <i class="fas fa-exclamation-triangle mr-2 text-red-600 opacity-75"></i>
-                                Database Needs Initialization
-                            </h4>
-                            <p class="text-red-700 mb-4">Choose one of the following options to initialize your database:</p>
-
-                            <div class="space-y-3">
-                                <div class="bg-white border border-red-100 rounded-md overflow-hidden">
-                                    <div class="bg-gradient-to-r from-red-100 to-red-50 p-3 border-b border-red-100">
-                                        <div class="flex items-center">
-                                            <div class="w-6 h-6 bg-red-200 text-red-700 rounded-full flex items-center justify-center text-sm font-medium mr-3">1</div>
-                                            <span class="font-medium text-red-800">Migration Script</span>
-                                        </div>
-                                    </div>
-                                    <div class="p-4 space-y-3">
-                                        <div class="flex items-start space-x-3">
-                                            <span class="text-slate-500 text-sm font-medium min-w-[4rem]">Docker:</span>
-                                            <code class="bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md text-sm flex-1 block">
-                                                docker-compose exec app php database/migrate.php
-                                            </code>
-                                        </div>
-                                        <div class="flex items-start space-x-3">
-                                            <span class="text-slate-500 text-sm font-medium min-w-[4rem]">Standard:</span>
-                                            <code class="bg-slate-50 text-slate-700 px-3 py-1.5 rounded-md text-sm flex-1 block">
-                                                php database/migrate.php
-                                            </code>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="bg-white border border-red-100 rounded-md overflow-hidden">
-                                    <div class="bg-gradient-to-r from-red-100 to-red-50 p-3 border-b border-red-100">
-                                        <div class="flex items-center">
-                                            <div class="w-6 h-6 bg-red-200 text-red-700 rounded-full flex items-center justify-center text-sm font-medium mr-3">2</div>
-                                            <span class="font-medium text-red-800">Manual Import</span>
-                                        </div>
-                                    </div>
-                                    <div class="p-4">
-                                        <div class="space-y-2">
-                                            <div class="flex items-center space-x-3">
-                                                <span class="w-1.5 h-1.5 bg-red-300 rounded-full"></span>
-                                                <span class="text-slate-600 text-sm">Access phpMyAdmin at <a href="http://localhost:8081" class="text-red-600 hover:text-red-700 underline decoration-red-200 hover:decoration-red-300">localhost:8081</a></span>
-                                            </div>
-                                            <div class="flex items-center space-x-3">
-                                                <span class="w-1.5 h-1.5 bg-red-300 rounded-full"></span>
-                                                <span class="text-slate-600 text-sm">Create database <strong class="text-slate-700"><?= htmlspecialchars($db['dbname']) ?></strong></span>
-                                            </div>
-                                            <div class="flex items-center space-x-3">
-                                                <span class="w-1.5 h-1.5 bg-red-300 rounded-full"></span>
-                                                <span class="text-slate-600 text-sm">Import <code class="bg-slate-50 text-slate-700 px-2 py-0.5 rounded text-xs">database/database.sql</code></span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    <?php else: ?>
-                        <div class="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md mb-3">
-                            <?= htmlspecialchars($db['error']) ?>
-                        </div>
-                        <p class="mt-2 text-php-700">Check your database connection settings in the .env file</p>
-                    <?php endif; ?>
+                
+                <div class="flex gap-3">
+                    <input type="text" id="messageInput" placeholder="Type your message here..." 
+                           class="flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button onclick="sendMessage()" id="sendBtn" 
+                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
                 </div>
             </div>
         </div>
 
-        <!-- PHP Extensions -->
-        <div class="bg-white rounded-md shadow-sm border border-php-200 mb-6 overflow-hidden">
-            <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                <i class="fas fa-puzzle-piece mr-2"></i> Available PHP Extensions
-            </div>
-            <div class="p-4">
-                <div class="grid md:grid-cols-3 gap-4">
-                    <?php
-                    $extensions = get_loaded_extensions();
-                    sort($extensions);
-                    $chunks = array_chunk($extensions, ceil(count($extensions) / 3));
-
-                    foreach ($chunks as $chunk) {
-                        echo '<ul class="divide-y divide-php-100 text-sm">';
-                        foreach ($chunk as $ext) {
-                            echo '<li class="py-1.5 text-php-700">' . htmlspecialchars($ext) . '</li>';
-                        }
-                        echo '</ul>';
-                    }
-                    ?>
-                </div>
-            </div>
-        </div>
-
-        <!-- Sample Notes Display -->
-        <?php if ($db['tableExists'] && count($db['notes']) > 0): ?>
-            <div class="bg-white rounded-md shadow-sm border border-php-200 mb-6">
-                <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                    <i class="fas fa-sticky-note mr-2"></i> Sample Notes from Database
-                </div>
-                <div class="p-4 space-y-3">
-                    <?php foreach ($db['notes'] as $note): ?>
-                        <div class="border border-php-200 rounded-md">
-                            <div class="bg-php-200 p-2 border-b border-php-200 font-medium text-php-800">
-                                <?= htmlspecialchars($note['title']) ?>
-                            </div>
-                            <div class="p-3">
-                                <p class="text-php-700"><?= htmlspecialchars($note['content']) ?></p>
-                                <div class="text-php-500 text-xs mt-2">Created: <?= htmlspecialchars($note['created_at']) ?></div>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        <?php elseif (!$db['tableExists'] && $db['connected']): ?>
-            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 mb-6 rounded-md">
-                <h4 class="font-semibold mb-1 text-yellow-900">Database exists but tables are missing</h4>
-                <p class="text-yellow-800">Regenerate the database with the migration script to test and visualize the assigned tables:</p>
-                <pre class=" text-yellow-800 p-2 mt-1 rounded border border-yellow-200 text-sm">docker-compose exec app php database/migrate.php</pre>
-            </div>
-        <?php endif; ?>
-
-        <!-- Next Steps Cards -->
-        <div class="grid md:grid-cols-2 gap-6 mb-6">
-            <div class="bg-white rounded-md shadow-sm border border-php-200">
-                <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                    <i class="fas fa-code mr-2"></i> Standard Environment Setup
-                </div>
-                <div class="p-5">
-                    <div class="space-y-4">
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">1</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Initialize your database</p>
-                                <div class="space-y-2 text-sm text-php-700">
-                                    <div class="flex items-center space-x-2">
-                                        <span class="w-1.5 h-1.5 bg-php-400 rounded-full"></span>
-                                        <span>Manually import: <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs">database/database.sql</code></span>
-                                    </div>
-                                    <div class="flex items-center space-x-2">
-                                        <span class="w-1.5 h-1.5 bg-php-400 rounded-full"></span>
-                                        <span>Or run migration: <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs">php database/migrate.php</code></span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">2</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Install packages: <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs ml-1">composer install</code></p>
-                            </div>
-                        </div>
-
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">4</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Switch your project's root directory To <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs ml-1">htdocs/public/</code> directory</p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">3</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Start building in <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs ml-1">public/</code> directory</p>
-                            </div>
-                        </div>
+        <!-- Status Cards -->
+        <div class="grid md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-cog text-blue-500 mr-2"></i>
+                    Environment
+                </h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">PHP Version:</span>
+                        <span class="font-medium"><?= phpversion() ?></span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">OpenAI Model:</span>
+                        <span class="font-medium"><?= htmlspecialchars($config['model']) ?></span>
                     </div>
                 </div>
             </div>
 
-            <div class="bg-white rounded-md shadow-sm border border-php-200">
-                <div class="bg-gradient-to-r from-php-500 to-php-600 text-white p-3 rounded-t-md">
-                    <i class="fab fa-docker mr-2"></i> Docker Environment Setup
-                </div>
-                <div class="p-5">
-                    <div class="space-y-4">
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">1</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Run database migration</p>
-                                <code class="bg-php-100 text-php-800 px-2 py-1 rounded border border-php-200 text-xs block">docker-compose exec app php database/migrate.php</code>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">2</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Access phpMyAdmin at <a href="http://localhost:8081" class="text-php-600 hover:text-php-800 underline decoration-php-300 hover:decoration-php-400">localhost:8081</a></p>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">3</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Install packages</p>
-                                <code class="bg-php-100 text-php-800 px-2 py-1 rounded border border-php-200 text-xs block">docker-compose exec app composer install</code>
-                            </div>
-                        </div>
-
-                        <div class="flex items-start space-x-3">
-                            <div class="flex-shrink-0 w-6 h-6 bg-php-100 text-php-700 rounded-full flex items-center justify-center text-sm font-medium">4</div>
-                            <div class="flex-1">
-                                <p class="text-php-800 font-medium mb-1">Start building in <code class="bg-php-100 text-php-800 px-2 py-0.5 rounded border border-php-200 text-xs ml-1">public/</code> directory</p>
-                            </div>
-                        </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-server text-green-500 mr-2"></i>
+                    Server Status
+                </h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Web Server:</span>
+                        <span class="font-medium text-green-600">Running</span>
                     </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">Environment:</span>
+                        <span class="font-medium">Development</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <h3 class="font-semibold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-database text-purple-500 mr-2"></i>
+                    Database
+                </h3>
+                <div class="flex items-center">
+                    <span class="<?= $dbStatus === 'Connected' ? 'text-green-600' : 'text-red-600' ?> font-medium">
+                        <i class="fas fa-<?= $dbStatus === 'Connected' ? 'check-circle' : 'times-circle' ?> mr-2"></i>
+                        <?= $dbStatus ?>
+                    </span>
                 </div>
             </div>
         </div>
 
-        <footer class="pt-4 my-md-5 pt-md-5 border-t border-php-200">
-            <div class="row">
-                <div class="col-12 col-md">
-                    <small class="d-block mb-3 text-php-500">&copy; <?= date('Y') ?> Simple PHP Initialization</small>
+        <!-- Available Tools -->
+        <div class="bg-white rounded-lg shadow p-6">
+            <h3 class="font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-tools text-orange-500 mr-2"></i>
+                Available AI Tools
+            </h3>
+            <div class="grid md:grid-cols-3 gap-4">
+                <div class="flex items-center p-3 bg-blue-50 rounded-lg">
+                    <i class="fas fa-cloud-sun text-blue-500 mr-3"></i>
+                    <span class="text-gray-700">Weather Information</span>
+                </div>
+                <div class="flex items-center p-3 bg-green-50 rounded-lg">
+                    <i class="fas fa-calculator text-green-500 mr-3"></i>
+                    <span class="text-gray-700">Mathematical Calculator</span>
+                </div>
+                <div class="flex items-center p-3 bg-purple-50 rounded-lg">
+                    <i class="fas fa-search text-purple-500 mr-3"></i>
+                    <span class="text-gray-700">Search Functionality</span>
                 </div>
             </div>
+        </div>
+
+        <footer class="text-center pt-8 mt-8 border-t text-gray-500">
+            <p>&copy; <?= date('Y') ?> AI-Powered PHP Environment</p>
         </footer>
     </div>
 
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        'php': {
-                            50: '#f8f9fc',
-                            100: '#f1f2f8',
-                            200: '#e2e5f0',
-                            300: '#c8cde3',
-                            400: '#9ba5d1',
-                            500: '#7881bf',
-                            600: '#4e5b93',
-                            700: '#414d7a',
-                            800: '#363f64',
-                            900: '#2d3553',
-                        }
-                    }
-                }
-            }
+        function addMessage(content, isUser = false) {
+            let chatMessages = document.getElementById('chatMessages');
+            let messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
+            
+            messageDiv.innerHTML = `
+                <div class="max-w-md px-4 py-2 rounded-lg ${
+                    isUser 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-white border text-gray-800'
+                }">
+                    <div class="text-sm whitespace-pre-wrap">${content}</div>
+                </div>
+            `;
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
         }
+
+        async function sendMessage() {
+            let messageInput = document.getElementById('messageInput');
+            let sendBtn = document.getElementById('sendBtn');
+            let message = messageInput.value.trim();
+            
+            if (!message) return;
+
+            messageInput.value = '';
+            sendBtn.disabled = true;
+            sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+            addMessage(message, true);
+
+            try {
+                let formData = new FormData();
+                formData.append('action', 'chat');
+                formData.append('message', message);
+
+                let response = await fetch('', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                let data = await response.json();
+                addMessage(data.error || data.response);
+
+            } catch (error) {
+                addMessage('Error: Failed to send message. Please try again.');
+            }
+
+            sendBtn.disabled = false;
+            sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            messageInput.focus();
+        }
+
+        document.getElementById('messageInput')?.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        document.getElementById('messageInput')?.focus();
     </script>
 </body>
 
