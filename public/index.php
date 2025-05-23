@@ -1,4 +1,5 @@
 <?php
+
 /**
  * AI-Powered PHP Environment - Clean Integration
  * Environment loading handled by .env only
@@ -16,16 +17,16 @@ $config = require_once __DIR__ . '/../config/config.php';
 // Handle AJAX requests for AI chat
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
-    
+
     if ($_POST['action'] === 'chat') {
         $userInput = $_POST['message'] ?? '';
         $userId = $_POST['user_id'] ?? 'default_user';
-        
+
         if (empty($userInput)) {
             echo json_encode(['error' => 'No message provided']);
             exit;
         }
-        
+
         try {
             // Get or create active conversation thread
             $conversa = getActiveConversation($userId);
@@ -33,19 +34,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 echo json_encode(['error' => 'Failed to access conversation']);
                 exit;
             }
-            
+
             // Add user message to thread
             $conversa['thread'][] = ['autor' => 'usuario', 'mensagem' => $userInput];
-            
+
             // Create ModelContextProtocol instance
             $mcp = new ModelContextProtocol($config);
 
             // Add instructions
-            $mcp->addInstruction("You are a helpful assistant that provides information and performs tasks.");
-            $mcp->addInstruction("Always be polite and concise in your responses.");
-            $mcp->addInstruction("If you're unsure about something, acknowledge your uncertainty.");
-            $mcp->addInstruction("Use the tools available to you when appropriate to answer questions.");
-            $mcp->addInstruction("When user refers to numbers (like '3'), check if they're referring to items from previous responses in this conversation.");
+            $mcp->addInstruction("Você é um assistente útil que fornece informações e realiza tarefas.");
+            $mcp->addInstruction("Seja sempre educado e conciso em suas respostas.");
+            $mcp->addInstruction("Se não tiver certeza sobre algo, admita sua incerteza.");
+            $mcp->addInstruction("Use as ferramentas disponíveis quando apropriado para responder perguntas.");
+            $mcp->addInstruction("Você pode puxar notas do banco de dados para adicionar contexto às suas respostas.");
+            $mcp->addInstruction("Você pode responder perguntas baseadas no conteúdo da conversa e nos arquivos fornecidos.");
+            $mcp->addInstruction("Você deve formular as respostas sobre tópicos apresentados em suas notas de forma clara e acessível.");
+            $mcp->addInstruction("Você pode expandir as respostas com informações adicionais e exemplos, se necessário.");
 
             // Add tools
             $mcp->addTool(new WeatherTool());
@@ -55,14 +59,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Add guardrails
             $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
             $mcp->addGuardrail(new KeywordGuardrail(
-                ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'], 
+                ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'],
                 "I cannot process requests related to system exploitation or unauthorized access."
             ));
 
             // Add context
             $mcp->addContext('interface', 'web');
             $mcp->addContext('current_date', date('Y-m-d'));
-            
+
             // Add conversation thread as context for continuity
             if (!empty($conversa['thread'])) {
                 $conversationHistory = "Current conversation thread:\n";
@@ -71,7 +75,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 $mcp->addContext('conversation_thread', $conversationHistory);
             }
-            
+
             // Add notes from database as context for AI to read
             if (!empty($config['database']['notes'])) {
                 $notesContext = "Available notes from database:\n";
@@ -83,25 +87,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             // Get response from AI
             $response = $mcp->run($userInput);
-            
+
             // Add bot response to thread
             $conversa['thread'][] = ['autor' => 'bot', 'mensagem' => $response];
-            
+
             // Update conversation thread in database
             updateConversationThread($conversa['id'], $conversa['thread']);
-            
+
             echo json_encode(['response' => $response]);
-            
         } catch (Exception $e) {
             echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
         }
-        
+
         exit;
     }
-    
+
     if ($_POST['action'] === 'reset_conversation') {
         $userId = $_POST['user_id'] ?? 'default_user';
-        
+
         try {
             $conversa = getActiveConversation($userId);
             if ($conversa) {
@@ -111,7 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } catch (Exception $e) {
             echo json_encode(['error' => 'Failed to reset conversation']);
         }
-        
+
         exit;
     }
 }
@@ -158,7 +161,7 @@ if ($config['database']['connection']) {
                 </h2>
                 <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - it has access to <?= $dbConnected && !empty($config['database']['notes']) ? count($config['database']['notes']) . ' notes from your database, plus' : '' ?> weather, calculator, and search tools</p>
             </div>
-            
+
             <div class="p-6">
                 <div id="chatMessages" class="h-96 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
                     <div class="text-gray-500 text-center py-8">
@@ -167,17 +170,17 @@ if ($config['database']['connection']) {
                         <p class="text-sm mt-2">Try: "What notes do I have?" or "Calculate 25 * 4" or "What's the weather in Paris?"</p>
                     </div>
                 </div>
-                
+
                 <div class="flex gap-3">
-                    <input type="text" id="messageInput" placeholder="Type your message here..." 
-                           class="flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                    <button onclick="sendMessage()" id="sendBtn" 
-                            class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                    <input type="text" id="messageInput" placeholder="Type your message here..."
+                        class="flex-1 px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <button onclick="sendMessage()" id="sendBtn"
+                        class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fas fa-paper-plane"></i>
                     </button>
-                    <button onclick="resetConversation()" id="resetBtn" 
-                            class="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors" 
-                            title="Reset conversation">
+                    <button onclick="resetConversation()" id="resetBtn"
+                        class="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                        title="Reset conversation">
                         <i class="fas fa-redo"></i>
                     </button>
                 </div>
@@ -232,9 +235,9 @@ if ($config['database']['connection']) {
                     </span>
                 </div>
                 <?php if ($dbConnected && !empty($config['database']['notes'])): ?>
-                <div class="text-xs text-gray-500 mt-2">
-                    <?= count($config['database']['notes']) ?> notes available for AI
-                </div>
+                    <div class="text-xs text-gray-500 mt-2">
+                        <?= count($config['database']['notes']) ?> notes available for AI
+                    </div>
                 <?php endif; ?>
             </div>
         </div>
@@ -271,7 +274,7 @@ if ($config['database']['connection']) {
             let chatMessages = document.getElementById('chatMessages');
             let messageDiv = document.createElement('div');
             messageDiv.className = `flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`;
-            
+
             messageDiv.innerHTML = `
                 <div class="max-w-md px-4 py-2 rounded-lg ${
                     isUser 
@@ -281,7 +284,7 @@ if ($config['database']['connection']) {
                     <div class="text-sm whitespace-pre-wrap">${content}</div>
                 </div>
             `;
-            
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
         }
@@ -290,7 +293,7 @@ if ($config['database']['connection']) {
             let messageInput = document.getElementById('messageInput');
             let sendBtn = document.getElementById('sendBtn');
             let message = messageInput.value.trim();
-            
+
             if (!message) return;
 
             messageInput.value = '';
@@ -315,7 +318,7 @@ if ($config['database']['connection']) {
                 }
 
                 let data = await response.json();
-                
+
                 if (data.error) {
                     addMessage('Error: ' + data.error);
                 } else {
@@ -346,10 +349,10 @@ if ($config['database']['connection']) {
         async function resetConversation() {
             let resetBtn = document.getElementById('resetBtn');
             let chatMessages = document.getElementById('chatMessages');
-            
+
             resetBtn.disabled = true;
             resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-            
+
             try {
                 let formData = new FormData();
                 formData.append('action', 'reset_conversation');
@@ -361,7 +364,7 @@ if ($config['database']['connection']) {
                 });
 
                 let data = await response.json();
-                
+
                 if (data.success) {
                     // Clear chat interface
                     chatMessages.innerHTML = `
@@ -375,7 +378,7 @@ if ($config['database']['connection']) {
             } catch (error) {
                 console.error('Reset failed:', error);
             }
-            
+
             resetBtn.disabled = false;
             resetBtn.innerHTML = '<i class="fas fa-redo"></i>';
         }
@@ -385,7 +388,7 @@ if ($config['database']['connection']) {
             let messageInput = document.getElementById('messageInput');
             let sendBtn = document.getElementById('sendBtn');
             let resetBtn = document.getElementById('resetBtn');
-            
+
             // Enter key listener
             if (messageInput) {
                 messageInput.addEventListener('keypress', function(e) {
@@ -396,7 +399,7 @@ if ($config['database']['connection']) {
                 });
                 messageInput.focus();
             }
-            
+
             // Send button listener
             if (sendBtn) {
                 sendBtn.addEventListener('click', function(e) {
@@ -404,7 +407,7 @@ if ($config['database']['connection']) {
                     sendMessage();
                 });
             }
-            
+
             // Reset button listener
             if (resetBtn) {
                 resetBtn.addEventListener('click', function(e) {
