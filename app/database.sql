@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: mysql
--- Tempo de geração: 21/05/2025 às 13:41
+-- Tempo de geração: 23/05/2025 às 20:14
 -- Versão do servidor: 8.0.42
 -- Versão do PHP: 8.2.27
 
@@ -24,13 +24,27 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
+-- Estrutura para tabela `conversas`
+--
+
+CREATE TABLE `conversas` (
+  `id` int NOT NULL,
+  `usuario_id` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `timestamp_inicio` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `timestamp_fim` timestamp NULL DEFAULT NULL,
+  `thread` json NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Estrutura para tabela `notes`
 --
 
 CREATE TABLE `notes` (
   `id` int NOT NULL,
-  `title` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `content` text COLLATE utf8mb4_unicode_ci,
+  `title` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `content` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -49,6 +63,13 @@ INSERT INTO `notes` (`id`, `title`, `content`, `created_at`, `updated_at`) VALUE
 --
 
 --
+-- Índices de tabela `conversas`
+--
+ALTER TABLE `conversas`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_usuario_timestamp` (`usuario_id`,`timestamp_inicio`);
+
+--
 -- Índices de tabela `notes`
 --
 ALTER TABLE `notes`
@@ -57,6 +78,12 @@ ALTER TABLE `notes`
 --
 -- AUTO_INCREMENT para tabelas despejadas
 --
+
+--
+-- AUTO_INCREMENT de tabela `conversas`
+--
+ALTER TABLE `conversas`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT de tabela `notes`

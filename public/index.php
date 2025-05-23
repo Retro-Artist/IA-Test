@@ -14,64 +14,116 @@ require_once __DIR__ . '/../src/Model/SampleTools.php';
 $config = require_once __DIR__ . '/../config/config.php';
 
 // Handle AJAX requests for AI chat
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'chat') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     header('Content-Type: application/json');
     
-    $userInput = $_POST['message'] ?? '';
-    
-    if (empty($userInput)) {
-        echo json_encode(['error' => 'No message provided']);
+    if ($_POST['action'] === 'chat') {
+        $userInput = $_POST['message'] ?? '';
+        $userId = $_POST['user_id'] ?? 'default_user';
+        
+        if (empty($userInput)) {
+            echo json_encode(['error' => 'No message provided']);
+            exit;
+        }
+        
+        try {
+            // Get or create active conversation thread
+            $conversa = getActiveConversation($userId);
+            if (!$conversa) {
+                echo json_encode(['error' => 'Failed to access conversation']);
+                exit;
+            }
+            
+            // Add user message to thread
+            $conversa['thread'][] = ['autor' => 'usuario', 'mensagem' => $userInput];
+            
+            // Create ModelContextProtocol instance
+            $mcp = new ModelContextProtocol($config);
+
+            // Add instructions
+            $mcp->addInstruction("You are a helpful assistant that provides information and performs tasks.");
+            $mcp->addInstruction("Always be polite and concise in your responses.");
+            $mcp->addInstruction("If you're unsure about something, acknowledge your uncertainty.");
+            $mcp->addInstruction("Use the tools available to you when appropriate to answer questions.");
+            $mcp->addInstruction("When user refers to numbers (like '3'), check if they're referring to items from previous responses in this conversation.");
+
+            // Add tools
+            $mcp->addTool(new WeatherTool());
+            $mcp->addTool(new CalculatorTool());
+            $mcp->addTool(new SearchTool());
+
+            // Add guardrails
+            $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
+            $mcp->addGuardrail(new KeywordGuardrail(
+                ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'], 
+                "I cannot process requests related to system exploitation or unauthorized access."
+            ));
+
+            // Add context
+            $mcp->addContext('interface', 'web');
+            $mcp->addContext('current_date', date('Y-m-d'));
+            
+            // Add conversation thread as context for continuity
+            if (!empty($conversa['thread'])) {
+                $conversationHistory = "Current conversation thread:\n";
+                foreach ($conversa['thread'] as $turn) {
+                    $conversationHistory .= "[{$turn['autor']}]: {$turn['mensagem']}\n";
+                }
+                $mcp->addContext('conversation_thread', $conversationHistory);
+            }
+            
+            // Add notes from database as context for AI to read
+            if (!empty($config['database']['notes'])) {
+                $notesContext = "Available notes from database:\n";
+                foreach ($config['database']['notes'] as $i => $note) {
+                    $notesContext .= ($i + 1) . ". **{$note['title']}** - {$note['content']}\n";
+                }
+                $mcp->addContext('notes', $notesContext);
+            }
+
+            // Get response from AI
+            $response = $mcp->run($userInput);
+            
+            // Add bot response to thread
+            $conversa['thread'][] = ['autor' => 'bot', 'mensagem' => $response];
+            
+            // Update conversation thread in database
+            updateConversationThread($conversa['id'], $conversa['thread']);
+            
+            echo json_encode(['response' => $response]);
+            
+        } catch (Exception $e) {
+            echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
+        }
+        
         exit;
     }
     
-    try {
-        // Create ModelContextProtocol instance (exactly like example1.php)
-        $mcp = new ModelContextProtocol($config);
-
-        // Add instructions (same as example1.php)
-        $mcp->addInstruction("You are a helpful assistant that provides information and performs tasks.");
-        $mcp->addInstruction("Always be polite and concise in your responses.");
-        $mcp->addInstruction("If you're unsure about something, acknowledge your uncertainty.");
-        $mcp->addInstruction("Use the tools available to you when appropriate to answer questions.");
-
-        // Add tools (same as example1.php)
-        $mcp->addTool(new WeatherTool());
-        $mcp->addTool(new CalculatorTool());
-        $mcp->addTool(new SearchTool());
-
-        // Add guardrails (same as example1.php)
-        $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
-        $mcp->addGuardrail(new KeywordGuardrail(
-            ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'], 
-            "I cannot process requests related to system exploitation or unauthorized access."
-        ));
-
-        // Add context (similar to example1.php)
-        $mcp->addContext('interface', 'web');
-        $mcp->addContext('current_date', date('Y-m-d'));
-
-        // Get response (same as example1.php)
-        $response = $mcp->run($userInput);
+    if ($_POST['action'] === 'reset_conversation') {
+        $userId = $_POST['user_id'] ?? 'default_user';
         
-        echo json_encode(['response' => $response]);
+        try {
+            $conversa = getActiveConversation($userId);
+            if ($conversa) {
+                closeConversation($conversa['id']);
+            }
+            echo json_encode(['success' => true]);
+        } catch (Exception $e) {
+            echo json_encode(['error' => 'Failed to reset conversation']);
+        }
         
-    } catch (Exception $e) {
-        echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
+        exit;
     }
-    
-    exit;
 }
 
 // Simple database status check
 $dbStatus = 'Not configured';
-if (getenv('DB_HOST')) {
-    try {
-        $dsn = sprintf("mysql:host=%s;dbname=%s", getenv('DB_HOST'), getenv('DB_DATABASE'));
-        $pdo = new PDO($dsn, getenv('DB_USERNAME'), getenv('DB_PASSWORD'));
-        $dbStatus = 'Connected';
-    } catch (PDOException $e) {
-        $dbStatus = 'Connection failed';
-    }
+$dbConnected = false;
+if ($config['database']['connection']) {
+    $dbStatus = 'Connected';
+    $dbConnected = true;
+} elseif (getenv('DB_HOST')) {
+    $dbStatus = 'Connection failed';
 }
 
 ?>
@@ -104,15 +156,15 @@ if (getenv('DB_HOST')) {
                     <i class="fas fa-comments mr-3"></i>
                     AI Assistant
                 </h2>
-                <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - try asking about weather, calculations, or searches</p>
+                <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - it has access to <?= $dbConnected && !empty($config['database']['notes']) ? count($config['database']['notes']) . ' notes from your database, plus' : '' ?> weather, calculator, and search tools</p>
             </div>
             
             <div class="p-6">
                 <div id="chatMessages" class="h-96 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
                     <div class="text-gray-500 text-center py-8">
                         <i class="fas fa-robot text-4xl mb-4 text-gray-400"></i>
-                        <p>Hello! I'm your AI assistant with weather, calculator, and search tools.</p>
-                        <p class="text-sm mt-2">Try: "What's the weather in Paris?" or "Calculate 25 * 4"</p>
+                        <p>Hello! I'm your AI assistant with access to your database notes<?= $dbConnected && !empty($config['database']['notes']) ? ' (' . count($config['database']['notes']) . ' notes)' : '' ?>.</p>
+                        <p class="text-sm mt-2">Try: "What notes do I have?" or "Calculate 25 * 4" or "What's the weather in Paris?"</p>
                     </div>
                 </div>
                 
@@ -122,6 +174,11 @@ if (getenv('DB_HOST')) {
                     <button onclick="sendMessage()" id="sendBtn" 
                             class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fas fa-paper-plane"></i>
+                    </button>
+                    <button onclick="resetConversation()" id="resetBtn" 
+                            class="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors" 
+                            title="Reset conversation">
+                        <i class="fas fa-redo"></i>
                     </button>
                 </div>
             </div>
@@ -174,6 +231,11 @@ if (getenv('DB_HOST')) {
                         <?= $dbStatus ?>
                     </span>
                 </div>
+                <?php if ($dbConnected && !empty($config['database']['notes'])): ?>
+                <div class="text-xs text-gray-500 mt-2">
+                    <?= count($config['database']['notes']) ?> notes available for AI
+                </div>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -241,16 +303,27 @@ if (getenv('DB_HOST')) {
                 let formData = new FormData();
                 formData.append('action', 'chat');
                 formData.append('message', message);
+                formData.append('user_id', getUserId());
 
-                let response = await fetch('', {
+                let response = await fetch(window.location.href, {
                     method: 'POST',
                     body: formData
                 });
 
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
                 let data = await response.json();
-                addMessage(data.error || data.response);
+                
+                if (data.error) {
+                    addMessage('Error: ' + data.error);
+                } else {
+                    addMessage(data.response);
+                }
 
             } catch (error) {
+                console.error('Send message error:', error);
                 addMessage('Error: Failed to send message. Please try again.');
             }
 
@@ -259,11 +332,87 @@ if (getenv('DB_HOST')) {
             messageInput.focus();
         }
 
-        document.getElementById('messageInput')?.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') sendMessage();
-        });
+        // Simple user ID generation/storage
+        function getUserId() {
+            let userId = localStorage.getItem('chatUserId');
+            if (!userId) {
+                userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem('chatUserId', userId);
+            }
+            return userId;
+        }
 
-        document.getElementById('messageInput')?.focus();
+        // Reset conversation thread
+        async function resetConversation() {
+            let resetBtn = document.getElementById('resetBtn');
+            let chatMessages = document.getElementById('chatMessages');
+            
+            resetBtn.disabled = true;
+            resetBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            
+            try {
+                let formData = new FormData();
+                formData.append('action', 'reset_conversation');
+                formData.append('user_id', getUserId());
+
+                let response = await fetch(window.location.href, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                let data = await response.json();
+                
+                if (data.success) {
+                    // Clear chat interface
+                    chatMessages.innerHTML = `
+                        <div class="text-gray-500 text-center py-8">
+                            <i class="fas fa-robot text-4xl mb-4 text-gray-400"></i>
+                            <p>Conversation reset! Hello again! I'm your AI assistant with access to your database notes.</p>
+                            <p class="text-sm mt-2">Try: "What notes do I have?" or "Calculate 25 * 4" or "What's the weather in Paris?"</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Reset failed:', error);
+            }
+            
+            resetBtn.disabled = false;
+            resetBtn.innerHTML = '<i class="fas fa-redo"></i>';
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            let messageInput = document.getElementById('messageInput');
+            let sendBtn = document.getElementById('sendBtn');
+            let resetBtn = document.getElementById('resetBtn');
+            
+            // Enter key listener
+            if (messageInput) {
+                messageInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                    }
+                });
+                messageInput.focus();
+            }
+            
+            // Send button listener
+            if (sendBtn) {
+                sendBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    sendMessage();
+                });
+            }
+            
+            // Reset button listener
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    resetConversation();
+                });
+            }
+        });
     </script>
 </body>
 
