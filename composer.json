@@ -1,9 +1,9 @@
 {
     "name": "your-name/ia-test",
-    "description": "IA",
+    "description": "AI-Powered PHP Environment",
     "type": "project",
     "require": {
-        "php": "^8.4.7"
+        "php": "^8.4"
     },
     "autoload": {
         "psr-4": {

@@ -7,40 +7,24 @@
 
 // Load environment variables
 require_once __DIR__ . '/load_env.php';
-$envLoaded = loadEnv(__DIR__ . '/../.env');  // Load from root directory
+$envLoaded = loadEnv(__DIR__ . '/../.env');
 
 if (!$envLoaded) {
-    echo "WARNING: .env file could not be loaded!\n";
+    error_log("WARNING: .env file could not be loaded!");
 }
 
 // Get OpenAI API values from environment variables with fallbacks
-$apiKey = getenv('OPENAI_API_KEY');
-$apiKey = $apiKey !== false ? $apiKey : '';
-
-$modelName = getenv('OPENAI_MODEL');
-$modelName = $modelName !== false ? $modelName : 'gpt-4o-mini';
-
-$maxTokens = getenv('OPENAI_MAX_TOKENS');
-$maxTokens = $maxTokens !== false ? (int)$maxTokens : 1024;
-
-$temperature = getenv('OPENAI_TEMPERATURE');
-$temperature = $temperature !== false ? (float)$temperature : 0.7;
+$apiKey = getenv('OPENAI_API_KEY') ?: '';
+$modelName = getenv('OPENAI_MODEL') ?: 'gpt-4o-mini';
+$maxTokens = (int)(getenv('OPENAI_MAX_TOKENS') ?: 1024);
+$temperature = (float)(getenv('OPENAI_TEMPERATURE') ?: 0.7);
 
 // Get Database values from environment variables with fallbacks
-$dbHost = getenv('DB_HOST');
-$dbHost = $dbHost !== false ? $dbHost : 'localhost';
-
-$dbPort = getenv('DB_PORT');
-$dbPort = $dbPort !== false ? (int)$dbPort : 3306;
-
-$dbDatabase = getenv('DB_DATABASE');
-$dbDatabase = $dbDatabase !== false ? $dbDatabase : 'ai_php';
-
-$dbUsername = getenv('DB_USERNAME');
-$dbUsername = $dbUsername !== false ? $dbUsername : 'root';
-
-$dbPassword = getenv('DB_PASSWORD');
-$dbPassword = $dbPassword !== false ? $dbPassword : '';
+$dbHost = getenv('DB_HOST') ?: 'localhost';
+$dbPort = (int)(getenv('DB_PORT') ?: 3306);
+$dbDatabase = getenv('DB_DATABASE') ?: 'ai_php';
+$dbUsername = getenv('DB_USERNAME') ?: 'root';
+$dbPassword = getenv('DB_PASSWORD') ?: '';
 
 return [
     // OpenAI Configuration
@@ -48,7 +32,6 @@ return [
     'model' => $modelName,
     'max_tokens' => $maxTokens,
     'temperature' => $temperature,
-    'use_moderation' => true,
     
     // Database Configuration
     'database' => [
