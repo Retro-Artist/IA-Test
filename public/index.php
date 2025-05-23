@@ -10,9 +10,14 @@ require_once __DIR__ . '/../src/Model/ModelContextProtocol.php';
 require_once __DIR__ . '/../src/Model/Tool.php';
 require_once __DIR__ . '/../src/Model/Guardrail.php';
 require_once __DIR__ . '/../src/Model/SampleTools.php';
+require_once __DIR__ . '/../src/Model/Conversation.php';
 
 // Load configuration
 $config = require_once __DIR__ . '/../config/config.php';
+
+// Initialize models
+$conversation = new Conversation();
+$notes = $conversation->getNotes();
 
 // Handle AJAX requests for AI chat
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -29,19 +34,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
         try {
             // Get or create active conversation thread
-            $conversa = getActiveConversation($userId);
-            if (!$conversa) {
+            $conversationData = $conversation->getActiveThread($userId);
+            if (!$conversationData) {
                 echo json_encode(['error' => 'Failed to access conversation']);
                 exit;
             }
 
-            // Add user message to thread
-            $conversa['thread'][] = ['autor' => 'usuario', 'mensagem' => $userInput];
+            // Add user message to thread using OpenAI format
+            $conversation->addUserMessage($conversationData['thread'], $userInput);
 
             // Create ModelContextProtocol instance
             $mcp = new ModelContextProtocol($config);
 
-            // Add instructions
+
             $mcp->addInstruction("Você é um assistente útil que fornece informações e realiza tarefas.");
             $mcp->addInstruction("Seja sempre educado e conciso em suas respostas.");
             $mcp->addInstruction("Se não tiver certeza sobre algo, admita sua incerteza.");
@@ -51,51 +56,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $mcp->addInstruction("Você deve formular as respostas sobre tópicos apresentados em suas notas de forma clara e acessível.");
             $mcp->addInstruction("Você pode expandir as respostas com informações adicionais e exemplos, se necessário.");
 
-            // Add tools
-            $mcp->addTool(new WeatherTool());
-            $mcp->addTool(new CalculatorTool());
-            $mcp->addTool(new SearchTool());
-
-            // Add guardrails
             $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
             $mcp->addGuardrail(new KeywordGuardrail(
                 ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'],
                 "I cannot process requests related to system exploitation or unauthorized access."
             ));
 
-            // Add context
-            $mcp->addContext('interface', 'web');
-            $mcp->addContext('current_date', date('Y-m-d'));
-
-            // Add conversation thread as context for continuity
-            if (!empty($conversa['thread'])) {
-                $conversationHistory = "Current conversation thread:\n";
-                foreach ($conversa['thread'] as $turn) {
-                    $conversationHistory .= "[{$turn['autor']}]: {$turn['mensagem']}\n";
-                }
-                $mcp->addContext('conversation_thread', $conversationHistory);
-            }
-
-            // Add notes from database as context for AI to read
-            if (!empty($config['database']['notes'])) {
+            // Build notes context
+            $notesContext = '';
+            if (!empty($notes)) {
                 $notesContext = "Available notes from database:\n";
-                foreach ($config['database']['notes'] as $i => $note) {
+                foreach ($notes as $i => $note) {
                     $notesContext .= ($i + 1) . ". **{$note['title']}** - {$note['content']}\n";
                 }
-                $mcp->addContext('notes', $notesContext);
             }
 
-            // Get response from AI
-            $response = $mcp->run($userInput);
+            // Get response using thread-based method
+            $response = $mcp->runWithThread($conversationData['thread'], $notesContext);
 
-            // Add bot response to thread
-            $conversa['thread'][] = ['autor' => 'bot', 'mensagem' => $response];
+            // Add bot response to thread using OpenAI format
+            $conversation->addAssistantMessage($conversationData['thread'], $response);
 
             // Update conversation thread in database
-            updateConversationThread($conversa['id'], $conversa['thread']);
+            $conversation->updateThread($conversationData['id'], $conversationData['thread']);
 
             echo json_encode(['response' => $response]);
         } catch (Exception $e) {
+            error_log("Chat error: " . $e->getMessage());
             echo json_encode(['error' => 'Error: ' . $e->getMessage()]);
         }
 
@@ -106,9 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $userId = $_POST['user_id'] ?? 'default_user';
 
         try {
-            $conversa = getActiveConversation($userId);
-            if ($conversa) {
-                closeConversation($conversa['id']);
+            $conversationData = $conversation->getActiveThread($userId);
+            if ($conversationData) {
+                $conversation->closeConversation($conversationData['id']);
             }
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
@@ -122,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 // Simple database status check
 $dbStatus = 'Not configured';
 $dbConnected = false;
-if ($config['database']['connection']) {
+if (getDatabaseConnection()) {
     $dbStatus = 'Connected';
     $dbConnected = true;
 } elseif (getenv('DB_HOST')) {
@@ -159,14 +146,14 @@ if ($config['database']['connection']) {
                     <i class="fas fa-comments mr-3"></i>
                     AI Assistant
                 </h2>
-                <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - it has access to <?= $dbConnected && !empty($config['database']['notes']) ? count($config['database']['notes']) . ' notes from your database, plus' : '' ?> weather, calculator, and search tools</p>
+                <p class="text-blue-100 text-sm mt-1">Chat with your AI assistant - it has access to <?= $dbConnected && !empty($notes) ? count($notes) . ' notes from your database, plus' : '' ?> weather, calculator, and search tools</p>
             </div>
 
             <div class="p-6">
                 <div id="chatMessages" class="h-96 overflow-y-auto border rounded-lg p-4 mb-4 bg-gray-50">
                     <div class="text-gray-500 text-center py-8">
                         <i class="fas fa-robot text-4xl mb-4 text-gray-400"></i>
-                        <p>Hello! I'm your AI assistant with access to your database notes<?= $dbConnected && !empty($config['database']['notes']) ? ' (' . count($config['database']['notes']) . ' notes)' : '' ?>.</p>
+                        <p>Hello! I'm your AI assistant with access to your database notes<?= $dbConnected && !empty($notes) ? ' (' . count($notes) . ' notes)' : '' ?>.</p>
                         <p class="text-sm mt-2">Try: "What notes do I have?" or "Calculate 25 * 4" or "What's the weather in Paris?"</p>
                     </div>
                 </div>
@@ -234,9 +221,9 @@ if ($config['database']['connection']) {
                         <?= $dbStatus ?>
                     </span>
                 </div>
-                <?php if ($dbConnected && !empty($config['database']['notes'])): ?>
+                <?php if ($dbConnected && !empty($notes)): ?>
                     <div class="text-xs text-gray-500 mt-2">
-                        <?= count($config['database']['notes']) ?> notes available for AI
+                        <?= count($notes) ?> notes available for AI
                     </div>
                 <?php endif; ?>
             </div>
