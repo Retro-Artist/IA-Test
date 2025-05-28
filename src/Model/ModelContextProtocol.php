@@ -64,7 +64,7 @@ class ModelContextProtocol
     }
 
     /**
-     * Add context for the thread
+     * Add context for the conversation
      */
     public function addContext(string $key, $value): self
     {
@@ -73,7 +73,7 @@ class ModelContextProtocol
     }
 
     /**
-     * Run the agent with thread thread (new method for web interface)
+     * Run the agent with conversation thread (new method for web interface)
      */
     public function runWithThread(array $thread, string $notesContext = ''): string
     {
@@ -146,7 +146,7 @@ class ModelContextProtocol
             'content' => $systemPrompt
         ];
         
-        // 2. Add thread history - thread is already in OpenAI format
+        // 2. Add conversation history - thread is already in OpenAI format
         foreach ($thread as $message) {
             // Ensure the message has the correct OpenAI format
             if (isset($message['role']) && isset($message['content'])) {

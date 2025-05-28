@@ -129,7 +129,7 @@ class HandoffTool extends Tool
     {
         $this->targetAgent = $targetAgent;
         $this->name = 'transfer_to_' . strtolower(str_replace([' ', 'Agent'], ['_', ''], $targetAgent->getName()));
-        $this->description = "Transfer the conversation to {$targetAgent->getName()}: {$targetAgent->getAgentInstructions()}";
+        $this->description = "Transfer the conversation to {$targetAgent->getName()}: {$targetAgent->getRole()}";
         $this->parameters = [
             'message' => [
                 'type' => 'string',

@@ -163,3 +163,180 @@ class SearchTool extends Tool
                "3. Academic papers related to $query";
     }
 }
+
+
+/**
+ * Additional specialized tools for the multi-agent system
+ * To be added to the existing SampleTools.php file
+ */
+
+/**
+ * Translation Tool
+ * 
+ * Handles text translation between languages
+ */
+class TranslateTool extends Tool
+{
+    public function __construct()
+    {
+        $this->name = 'translate';
+        $this->description = 'Translate text between English and Spanish, correct grammar, and explain idioms';
+        $this->parameters = [
+            'text' => [
+                'type' => 'string',
+                'description' => 'The text to translate or work with',
+                'required' => true
+            ],
+            'task' => [
+                'type' => 'string',
+                'description' => 'The task: translate_to_spanish, translate_to_english, correct_grammar, or explain_idiom',
+                'required' => false
+            ]
+        ];
+    }
+    
+    public function execute(array $arguments): string
+    {
+        $text = $arguments['text'] ?? '';
+        $task = $arguments['task'] ?? 'translate';
+        
+        if (empty($text)) {
+            return "Error: No text provided for translation.";
+        }
+        
+        // Simple translation simulation
+        $translations = [
+            'hello' => 'hola',
+            'goodbye' => 'adiós',
+            'thank you' => 'gracias',
+            'please' => 'por favor',
+            'how are you' => '¿cómo estás?',
+            'good morning' => 'buenos días',
+            'good night' => 'buenas noches',
+            'hola' => 'hello',
+            'adiós' => 'goodbye',
+            'gracias' => 'thank you'
+        ];
+        
+        $lowerText = strtolower($text);
+        
+        // Check for direct translations
+        foreach ($translations as $from => $to) {
+            if (str_contains($lowerText, $from)) {
+                return "Translation: '{$text}' → '{$to}'";
+            }
+        }
+        
+        // Default response
+        return "Translation service: I can help translate between English and Spanish. Text: '{$text}'";
+    }
+}
+
+/**
+ * Divide Tool
+ * 
+ * Performs division operations
+ */
+class DivideTool extends Tool
+{
+    public function __construct()
+    {
+        $this->name = 'divide';
+        $this->description = 'Perform division operations';
+        $this->parameters = [
+            'dividend' => [
+                'type' => 'number',
+                'description' => 'The number to be divided',
+                'required' => true
+            ],
+            'divisor' => [
+                'type' => 'number',
+                'description' => 'The number to divide by',
+                'required' => true
+            ]
+        ];
+    }
+    
+    public function execute(array $arguments): string
+    {
+        $dividend = $arguments['dividend'] ?? 0;
+        $divisor = $arguments['divisor'] ?? 0;
+        
+        if ($divisor == 0) {
+            return "Error: Cannot divide by zero.";
+        }
+        
+        $result = $dividend / $divisor;
+        return "{$dividend} ÷ {$divisor} = {$result}";
+    }
+}
+
+/**
+ * Multiply Tool
+ * 
+ * Performs multiplication operations
+ */
+class MultiplyTool extends Tool
+{
+    public function __construct()
+    {
+        $this->name = 'multiply';
+        $this->description = 'Perform multiplication operations';
+        $this->parameters = [
+            'factor1' => [
+                'type' => 'number',
+                'description' => 'The first number to multiply',
+                'required' => true
+            ],
+            'factor2' => [
+                'type' => 'number',
+                'description' => 'The second number to multiply',
+                'required' => true
+            ]
+        ];
+    }
+    
+    public function execute(array $arguments): string
+    {
+        $factor1 = $arguments['factor1'] ?? 0;
+        $factor2 = $arguments['factor2'] ?? 0;
+        
+        $result = $factor1 * $factor2;
+        return "{$factor1} × {$factor2} = {$result}";
+    }
+}
+
+/**
+ * Subtract Tool
+ * 
+ * Performs subtraction operations
+ */
+class SubtractTool extends Tool
+{
+    public function __construct()
+    {
+        $this->name = 'subtract';
+        $this->description = 'Perform subtraction operations';
+        $this->parameters = [
+            'minuend' => [
+                'type' => 'number',
+                'description' => 'The number to subtract from',
+                'required' => true
+            ],
+            'subtrahend' => [
+                'type' => 'number',
+                'description' => 'The number to subtract',
+                'required' => true
+            ]
+        ];
+    }
+    
+    public function execute(array $arguments): string
+    {
+        $minuend = $arguments['minuend'] ?? 0;
+        $subtrahend = $arguments['subtrahend'] ?? 0;
+        
+        $result = $minuend - $subtrahend;
+        return "{$minuend} - {$subtrahend} = {$result}";
+    }
+}
