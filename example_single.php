@@ -60,7 +60,7 @@ while (true) {
     
     try {
         // Option 3: Advanced streaming with tool support (best option)
-        $mcp->runWithAdvancedStreaming($input);
+        $mcp->run($input);
         
     } catch (Exception $e) {
         echo "\nError: " . $e->getMessage() . "\n\n";
