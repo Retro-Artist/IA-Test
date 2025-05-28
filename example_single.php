@@ -5,18 +5,23 @@
 
 declare(strict_types=1);
 
-// Include necessary files com caminhos absolutos
+// Include necessary files with correct paths
 require_once __DIR__ . '/src/Model/ModelContextProtocol.php';
-require_once __DIR__ . '/src/Model/Tool.php';  // Adicione esta linha se necessário
+require_once __DIR__ . '/src/Model/Tool.php';
 require_once __DIR__ . '/src/Model/Guardrail.php';
 require_once __DIR__ . '/src/Model/SampleTools.php';
 
-// Load configuration com caminho absoluto
-$config = require_once __DIR__ . '/src/config.php';
+// Load configuration with correct path
+$config = require_once __DIR__ . '/config/config.php';
 
-// Opcional: verificação rápida de configuração
+// Check if API key is configured
 if (empty($config['api_key'])) {
-    die("Erro: Chave API não encontrada. Verifique seu arquivo .env\n");
+    echo "Error: OpenAI API key not found. Please check your .env file\n";
+    echo "Make sure you have:\n";
+    echo "1. Copied .env.example to .env\n";
+    echo "2. Added your OpenAI API key to the .env file\n";
+    echo "3. The .env file is in the root directory\n\n";
+    die();
 }
 
 // Create a new ModelContextProtocol instance
@@ -40,11 +45,10 @@ $mcp->addGuardrail(new KeywordGuardrail(
     "I cannot process requests related to system exploitation or unauthorized access."
 ));
 
-// Add context to the conversation
-$mcp->addContext('username', 'Rhuan');
+// Add context to the thread
+$mcp->addContext('username', 'User');
 $mcp->addContext('current_date', date('Y-m-d'));
 $mcp->addContext('session_id', uniqid());
-
 
 // CLI interaction loop
 echo "Model Context Protocol Example with Advanced Streaming\n";
@@ -59,8 +63,9 @@ while (true) {
     }
     
     try {
-        // Option 3: Advanced streaming with tool support (best option)
-        $mcp->run($input);
+        // Use the run method for single interactions
+        $response = $mcp->run($input);
+        echo "\n" . $response . "\n\n";
         
     } catch (Exception $e) {
         echo "\nError: " . $e->getMessage() . "\n\n";

@@ -1,133 +1,54 @@
 <?php
 /**
- * Agent implementation for Model Context Protocol
+ * Agent class following OpenAI's pattern
  * 
- * This implements the concept of an agent as described in the OpenAI guide
- * using the ModelContextProtocol as the foundation.
+ * This implements handoff-based multi-agent system similar to OpenAI's Python SDK
  */
 
 declare(strict_types=1);
 
 require_once 'ModelContextProtocol.php';
+require_once 'Tool.php';
 
 /**
- * Agent class
- * 
- * Extends ModelContextProtocol with workflow execution capabilities
+ * Agent class following OpenAI's pattern
  */
 class Agent extends ModelContextProtocol
 {
     private string $name;
-    private array $conversationHistory = [];
-    private int $maxSteps = 10;
+    private string $instructions;
+    private array $handoffs = [];
     
     /**
-     * Create a new Agent
+     * Create a new Agent()
      * 
      * @param string $name The name of the agent
-     * @param array $config Configuration for the agent
+     * @param string $instructions The instructions for the agent
+     * @param array $config Configuration for the agent (API keys, etc.)
+     * @param array $handoffs Array of other agents this agent can handoff to
      */
-    public function __construct(string $name, array $config = [])
+    public function __construct(string $name, string $instructions, array $config = [], array $handoffs = [])
     {
         parent::__construct($config);
         $this->name = $name;
+        $this->instructions = $instructions;
+        $this->handoffs = $handoffs;
         
-        // Add the agent name to its instructions
-        $this->addInstruction("You are $name.");
-    }
-    
-    /**
-     * Run the agent in a loop until completion
-     * 
-     * This implements the "run" concept from the OpenAI guide, where an agent
-     * operates in a loop until an exit condition is reached.
-     * 
-     * @param string $userInput The initial user input
-     * @return string The final response after the workflow is complete
-     */
-    public function execute(string $userInput): string
-    {
-        // Add the user input to the conversation history
-        $this->conversationHistory[] = ['role' => 'user', 'content' => $userInput];
+        // Add agent identity and instructions
+        $this->addInstruction("You are {$this->name}.");
+        $this->addInstruction($this->instructions);
         
-        $step = 0;
-        $lastResponse = '';
-        $isComplete = false;
-        
-        // Loop until the workflow is complete or we reach the maximum number of steps
-        while (!$isComplete && $step < $this->maxSteps) {
-            $step++;
+        // Add handoff instructions if handoffs are available
+        if (!empty($this->handoffs)) {
+            $handoffNames = array_map(fn($agent) => $agent->getName(), $this->handoffs);
+            $this->addInstruction("You can handoff to these agents: " . implode(', ', $handoffNames));
+            $this->addInstruction("Use handoffs when the user's request is better suited for a specialist agent.");
             
-            // Get the response from the model
-            $response = parent::run($userInput);
-            
-            // Add the response to the conversation history
-            $this->conversationHistory[] = ['role' => 'assistant', 'content' => $response];
-            
-            // Check if the workflow is complete
-            // In a real implementation, this would be more sophisticated
-            if ($this->isWorkflowComplete($response)) {
-                $isComplete = true;
+            // Create handoff tools
+            foreach ($this->handoffs as $agent) {
+                $this->addTool(new HandoffTool($agent,));
             }
-            
-            // If not complete, we'd need to update the user input for the next step
-            // In a real implementation, this might involve extracting tool results
-            $userInput = $this->prepareNextInput($response);
-            
-            $lastResponse = $response;
         }
-        
-        // If we reached the maximum number of steps without completing, add a note
-        if (!$isComplete) {
-            $lastResponse .= "\n\n(Reached maximum number of steps without completing the workflow)";
-        }
-        
-        return $lastResponse;
-    }
-    
-    /**
-     * Set the maximum number of steps the agent can take
-     * 
-     * @param int $steps The maximum number of steps
-     * @return self
-     */
-    public function setMaxSteps(int $steps): self
-    {
-        $this->maxSteps = $steps;
-        return $this;
-    }
-    
-    /**
-     * Check if the workflow is complete
-     * 
-     * In a real implementation, this would be more sophisticated,
-     * possibly looking for specific outputs or states.
-     * 
-     * @param string $response The current response
-     * @return bool Whether the workflow is complete
-     */
-    private function isWorkflowComplete(string $response): bool
-    {
-        // For this simple example, if the response doesn't contain a tool call
-        // indicator, we'll consider the workflow complete
-        return !str_contains($response, 'Executed tool calls:');
-    }
-    
-    /**
-     * Prepare the input for the next step
-     * 
-     * @param string $response The current response
-     * @return string The prepared input for the next step
-     */
-    private function prepareNextInput(string $response): string
-    {
-        // In a real implementation, this would extract tool results and format them
-        // For this simple example, we'll just pass a follow-up instruction
-        if (str_contains($response, 'Executed tool calls:')) {
-            return "Continue with the information from the tools.";
-        }
-        
-        return "Continue the workflow.";
     }
     
     /**
@@ -141,12 +62,23 @@ class Agent extends ModelContextProtocol
     }
     
     /**
-     * Get the conversation history
+     * Get the agent's instructions
      * 
-     * @return array The conversation history
+     * @return string The agent's instructions
      */
-    public function getConversationHistory(): array
+    public function getAgentInstructions(): string
     {
-        return $this->conversationHistory;
+        return $this->instructions;
+    }
+    
+    /**
+     * Execute the agent (wrapper around parent run method)
+     * 
+     * @param string $input The user input to process
+     * @return string The agent's response
+     */
+    public function execute(string $input): string
+    {
+        return $this->run($input);
     }
 }

@@ -1,11 +1,11 @@
 <?php
 /**
- * Conversation Model for handling database operations
+ * thread Model for handling database operations
  */
 
 declare(strict_types=1);
 
-class Conversation
+class Thread
 {
     private ?PDO $db;
 
@@ -15,14 +15,14 @@ class Conversation
     }
 
     /**
-     * Get or create active conversation thread
+     * Get or create active thread thread
      */
     public function getActiveThread(string $userId): ?array
     {
         if (!$this->db) return null;
         
         try {
-            // Find active conversation (last 30 minutes)
+            // Find active thread (last 30 minutes)
             $stmt = $this->db->prepare("
                 SELECT id, thread 
                 FROM conversas 
@@ -42,7 +42,7 @@ class Conversation
                 ];
             }
             
-            // Create new conversation if none found
+            // Create new thread if none found
             $stmt = $this->db->prepare("INSERT INTO conversas (usuario_id, thread) VALUES (?, ?)");
             $stmt->execute([$userId, json_encode([])]);
             
@@ -52,7 +52,7 @@ class Conversation
             ];
             
         } catch (PDOException $e) {
-            error_log("Failed to get conversation: " . $e->getMessage());
+            error_log("Failed to get thread: " . $e->getMessage());
             return null;
         }
     }
@@ -80,15 +80,15 @@ class Conversation
     }
 
     /**
-     * Update conversation thread
+     * Update thread thread
      */
-    public function updateThread(int $conversationId, array $thread): bool
+    public function updateThread(int $threadId, array $thread): bool
     {
         if (!$this->db) return false;
         
         try {
             $stmt = $this->db->prepare("UPDATE conversas SET thread = ? WHERE id = ?");
-            return $stmt->execute([json_encode($thread), $conversationId]);
+            return $stmt->execute([json_encode($thread), $threadId]);
         } catch (PDOException $e) {
             error_log("Failed to update thread: " . $e->getMessage());
             return false;
@@ -96,17 +96,17 @@ class Conversation
     }
 
     /**
-     * Close conversation (end session)
+     * Close thread (end session)
      */
-    public function closeConversation(int $conversationId): bool
+    public function closethread(int $threadId): bool
     {
         if (!$this->db) return false;
         
         try {
             $stmt = $this->db->prepare("UPDATE conversas SET timestamp_fim = NOW() WHERE id = ?");
-            return $stmt->execute([$conversationId]);
+            return $stmt->execute([$threadId]);
         } catch (PDOException $e) {
-            error_log("Failed to close conversation: " . $e->getMessage());
+            error_log("Failed to close thread: " . $e->getMessage());
             return false;
         }
     }

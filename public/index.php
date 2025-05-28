@@ -10,14 +10,14 @@ require_once __DIR__ . '/../src/Model/ModelContextProtocol.php';
 require_once __DIR__ . '/../src/Model/Tool.php';
 require_once __DIR__ . '/../src/Model/Guardrail.php';
 require_once __DIR__ . '/../src/Model/SampleTools.php';
-require_once __DIR__ . '/../src/Model/Conversation.php';
+require_once __DIR__ . '/../src/Model/thread.php';
 
 // Load configuration
 $config = require_once __DIR__ . '/../config/config.php';
 
 // Initialize models
-$conversation = new Conversation();
-$notes = $conversation->getNotes();
+$thread = new Thread();
+$notes = $thread->getNotes();
 
 // Handle AJAX requests for AI chat
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -33,15 +33,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
 
         try {
-            // Get or create active conversation thread
-            $conversationData = $conversation->getActiveThread($userId);
-            if (!$conversationData) {
-                echo json_encode(['error' => 'Failed to access conversation']);
+            // Get or create active thread thread
+            $threadData = $thread->getActiveThread($userId);
+            if (!$threadData) {
+                echo json_encode(['error' => 'Failed to access thread']);
                 exit;
             }
 
             // Add user message to thread using OpenAI format
-            $conversation->addUserMessage($conversationData['thread'], $userInput);
+            $thread->addUserMessage($threadData['thread'], $userInput);
 
             // Create ModelContextProtocol instance
             $mcp = new ModelContextProtocol($config);
@@ -72,13 +72,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
 
             // Get response using thread-based method
-            $response = $mcp->runWithThread($conversationData['thread'], $notesContext);
+            $response = $mcp->runWithThread($threadData['thread'], $notesContext);
 
             // Add bot response to thread using OpenAI format
-            $conversation->addAssistantMessage($conversationData['thread'], $response);
+            $thread->addAssistantMessage($threadData['thread'], $response);
 
-            // Update conversation thread in database
-            $conversation->updateThread($conversationData['id'], $conversationData['thread']);
+            // Update thread thread in database
+            $thread->updateThread($threadData['id'], $threadData['thread']);
 
             echo json_encode(['response' => $response]);
         } catch (Exception $e) {
@@ -89,17 +89,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
-    if ($_POST['action'] === 'reset_conversation') {
+    if ($_POST['action'] === 'reset_thread') {
         $userId = $_POST['user_id'] ?? 'default_user';
 
         try {
-            $conversationData = $conversation->getActiveThread($userId);
-            if ($conversationData) {
-                $conversation->closeConversation($conversationData['id']);
+            $threadData = $thread->getActiveThread($userId);
+            if ($threadData) {
+                $thread->closethread($threadData['id']);
             }
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
-            echo json_encode(['error' => 'Failed to reset conversation']);
+            echo json_encode(['error' => 'Failed to reset thread']);
         }
 
         exit;
@@ -165,9 +165,9 @@ if (getDatabaseConnection()) {
                         class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                         <i class="fas fa-paper-plane"></i>
                     </button>
-                    <button onclick="resetConversation()" id="resetBtn"
+                    <button onclick="resetThread()" id="resetBtn"
                         class="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
-                        title="Reset conversation">
+                        title="Reset thread">
                         <i class="fas fa-redo"></i>
                     </button>
                 </div>
@@ -332,8 +332,8 @@ if (getDatabaseConnection()) {
             return userId;
         }
 
-        // Reset conversation thread
-        async function resetConversation() {
+        // Reset thread thread
+        async function resetThread() {
             let resetBtn = document.getElementById('resetBtn');
             let chatMessages = document.getElementById('chatMessages');
 
@@ -342,7 +342,7 @@ if (getDatabaseConnection()) {
 
             try {
                 let formData = new FormData();
-                formData.append('action', 'reset_conversation');
+                formData.append('action', 'reset_thread');
                 formData.append('user_id', getUserId());
 
                 let response = await fetch(window.location.href, {
@@ -357,7 +357,7 @@ if (getDatabaseConnection()) {
                     chatMessages.innerHTML = `
                         <div class="text-gray-500 text-center py-8">
                             <i class="fas fa-robot text-4xl mb-4 text-gray-400"></i>
-                            <p>Conversation reset! Hello again! I'm your AI assistant with access to your database notes.</p>
+                            <p>thread reset! Hello again! I'm your AI assistant with access to your database notes.</p>
                             <p class="text-sm mt-2">Try: "What notes do I have?" or "Calculate 25 * 4" or "What's the weather in Paris?"</p>
                         </div>
                     `;
@@ -399,7 +399,7 @@ if (getDatabaseConnection()) {
             if (resetBtn) {
                 resetBtn.addEventListener('click', function(e) {
                     e.preventDefault();
-                    resetConversation();
+                    resetThread();
                 });
             }
         });

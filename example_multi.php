@@ -1,51 +1,78 @@
 <?php
 /**
- * Example of simple agent initialization and usage
- * Multi-agent system with clean routing and handoffs
+ * Multi-Agent System Example with Handoffs
+ * 
+ * This example demonstrates the OpenAI-style handoff pattern
+ * where a triage agent can transfer control to specialized agents.
  */
 
 declare(strict_types=1);
 
 // Include necessary files
-require_once __DIR__ . '/src/Model/ModelContextProtocol.php';
+require_once __DIR__ . '/src/Model/Agent.php';
 require_once __DIR__ . '/src/Model/Tool.php';
 require_once __DIR__ . '/src/Model/Guardrail.php';
-require_once __DIR__ . '/src/Tools/SampleTools.php';
-require_once __DIR__ . '/src/Model/Agent.php';
+require_once __DIR__ . '/src/Model/SampleTools.php';
 
 // Load configuration
 $config = require_once __DIR__ . '/config/config.php';
 
-// Initialize system (ModelContextProtocol serves as System)
-$system = new ModelContextProtocol($config);
+// Check if API key is configured
+if (empty($config['api_key'])) {
+    echo "❌ Error: OpenAI API key not found. Please check your .env file\n";
+    die();
+}
 
-// Add system-wide instructions, context, and guardrails
-$system->addInstruction("You are a helpful chat with multiple agent capability. Always be helpful and professional.");
-$system->addInstruction("Respond concisely and clearly.");
-$system->addContext('current_date', date('Y-m-d'));
-$system->addContext('user', 'Jhon Doe');
-$system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
-$system->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
+// Initialize specialized agents with tools
+$spanishAgent = new Agent(
+    "Spanish Agent", 
+    "You only speak Spanish. Always respond in Spanish. You are an expert in Spanish language and culture.",
+    $config
+);
 
-// Initialize agents
-$spanishAgent = new Agent("Spanish Agent", "You only speak Spanish. Always respond in Spanish.");
-$weatherAgent = new Agent("Weather Agent", "You provide weather information and forecasts.");
-$mathAgent = new Agent("Math Agent", "You are a mathematics expert. Help with calculations and math problems.");
+$weatherAgent = new Agent(
+    "Weather Agent", 
+    "You provide weather information and forecasts. You are an expert meteorologist. Use the weather tool when asked about weather.",
+    $config
+);
+$weatherAgent->addTool(new WeatherTool());
 
-// Initialize tools to appropriate agents
-$weatherTool = new WeatherTool();
-$calculatorTool = new CalculatorTool();
+$mathAgent = new Agent(
+    "Math Agent", 
+    "You are a mathematics expert. Help with calculations and math problems. Use the calculator tool for mathematical operations.",
+    $config
+);
+$mathAgent->addTool(new CalculatorTool());
 
-$weatherAgent->addTool($weatherTool);
-$mathAgent->addTool($calculatorTool);
+// Create triage agent with handoffs
+$triageAgent = new Agent(
+    "Triage Agent",
+    "Help the user with their questions. " .
+    "If they ask about weather, handoff to the Weather Agent. " .
+    "If they ask math questions, handoff to the Math Agent. " .
+    "If they write in Spanish or ask for Spanish translation, handoff to the Spanish Agent.",
+    $config,
+    [$spanishAgent, $weatherAgent, $mathAgent] // handoffs
+);
 
-// Define a triage agent that can route requests to the appropriate agent
-$triageAgent = new Agent("Triage Agent", "Analyze the user's request and determine the best agent to handle it.", [ $spanishAgent, $weatherAgent, $mathAgent]);
+// Add system-wide guardrails
+$triageAgent->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
+$triageAgent->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
 
-// CLI interaction loop for testing multi-agent system
-echo "Multi-Agent System Example\n";
-echo "Available agents: Spanish Agent, Weather Agent, Math Agent\n";
+// CLI interaction loop
+echo "OpenAI-Style Multi-Agent System\n";
+echo "==============================\n";
+echo "Available specialist agents via handoffs:\n";
+echo "- Spanish Agent: Handles Spanish language tasks\n";
+echo "- Weather Agent: Provides weather information\n";
+echo "- Math Agent: Solves mathematical problems\n\n";
+echo "The Triage Agent will handoff to specialists as needed.\n";
 echo "Type 'exit' to quit\n\n";
+
+echo "Try these examples:\n";
+echo "- 'Hola, ¿cómo estás?' (Spanish handoff)\n";
+echo "- 'What's the weather in Paris?' (Weather handoff)\n";
+echo "- 'Calculate 25 times 47' (Math handoff)\n\n";
 
 while (true) {
     echo "> ";
@@ -55,14 +82,19 @@ while (true) {
         break;
     }
     
+    if (empty($input)) {
+        echo "Please enter a question or command.\n\n";
+        continue;
+    }
+    
     try {
-        // Use triage agent to route and handle the request
+        echo "\n🤖 Processing your request...\n";
         $response = $triageAgent->execute($input);
         echo "\n" . $response . "\n\n";
         
     } catch (Exception $e) {
-        echo "\nError: " . $e->getMessage() . "\n\n";
+        echo "\n❌ Error: " . $e->getMessage() . "\n\n";
     }
 }
 
-echo "Goodbye!\n";
+echo "¡Adiós! Goodbye! 👋\n";

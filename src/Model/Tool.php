@@ -109,3 +109,58 @@ abstract class Tool
      */
     abstract public function execute(array $arguments): string;
 }
+
+/**
+ * HandoffTool - Implements handoff functionality for multi-agent systems
+ * 
+ * This follows OpenAI's handoff pattern where agents can transfer control
+ * to other specialized agents.
+ */
+class HandoffTool extends Tool
+{
+    private Agent $targetAgent;
+    
+    /**
+     * Create a new HandoffTool
+     * 
+     * @param Agent $targetAgent The agent to handoff to
+     */
+    public function __construct(Agent $targetAgent)
+    {
+        $this->targetAgent = $targetAgent;
+        $this->name = 'transfer_to_' . strtolower(str_replace([' ', 'Agent'], ['_', ''], $targetAgent->getName()));
+        $this->description = "Transfer the conversation to {$targetAgent->getName()}: {$targetAgent->getAgentInstructions()}";
+        $this->parameters = [
+            'message' => [
+                'type' => 'string',
+                'description' => 'The message or task to transfer to the agent',
+                'required' => true
+            ]
+        ];
+    }
+    
+    /**
+     * Execute the handoff
+     * 
+     * Transfers control to the target agent with the given message
+     * 
+     * @param array $arguments The arguments containing the message
+     * @return string The result from the target agent
+     */
+    public function execute(array $arguments): string
+    {
+        $message = $arguments['message'] ?? '';
+        
+        if (empty($message)) {
+            return "Error: No message provided for handoff to {$this->targetAgent->getName()}.";
+        }
+        
+        try {
+            // Execute the handoff - transfer control to the target agent
+            echo "🔄 Transferring to {$this->targetAgent->getName()}...\n";
+            return $this->targetAgent->execute($message);
+        } catch (Exception $e) {
+            return "Error during handoff to {$this->targetAgent->getName()}: " . $e->getMessage();
+        }
+    }
+}

@@ -64,7 +64,7 @@ class ModelContextProtocol
     }
 
     /**
-     * Add context for the conversation
+     * Add context for the thread
      */
     public function addContext(string $key, $value): self
     {
@@ -73,7 +73,7 @@ class ModelContextProtocol
     }
 
     /**
-     * Run the agent with conversation thread (new method for web interface)
+     * Run the agent with thread thread (new method for web interface)
      */
     public function runWithThread(array $thread, string $notesContext = ''): string
     {
@@ -95,14 +95,42 @@ class ModelContextProtocol
         if (!empty($notesContext)) {
             $systemPrompt .= "\n\n" . $notesContext;
         }
+        
+        // Add tool definitions to system prompt if tools are available
+        if (!empty($this->tools)) {
+            $systemPrompt .= "\n\nAvailable tools:\n";
+            foreach ($this->tools as $tool) {
+                $systemPrompt .= $tool->getDefinition() . "\n\n";
+            }
+            $systemPrompt .= "Use tools when appropriate to help answer questions or complete tasks.";
+        }
 
         // Build messages array following OpenAI format
         $messages = $this->buildMessages($thread, $systemPrompt);
         
-        // Call OpenAI API
+        // Call OpenAI API with tools if available
         $response = $this->callOpenAI($messages);
         
-        return $this->extractResponse($response);
+        return $this->processResponse($response);
+    }
+
+    /**
+     * Legacy run method for backward compatibility and CLI usage
+     */
+    public function run(string $userInput): string
+    {
+        // Apply guardrails to input
+        foreach ($this->guardrails as $guardrail) {
+            $result = $guardrail->validateInput($userInput);
+            if (!$result['valid']) {
+                return $result['message'];
+            }
+        }
+
+        // Create a simple thread for legacy support using OpenAI format
+        $thread = [['role' => 'user', 'content' => $userInput]];
+        
+        return $this->runWithThread($thread);
     }
 
     /**
@@ -118,7 +146,7 @@ class ModelContextProtocol
             'content' => $systemPrompt
         ];
         
-        // 2. Add conversation history - thread is already in OpenAI format
+        // 2. Add thread history - thread is already in OpenAI format
         foreach ($thread as $message) {
             // Ensure the message has the correct OpenAI format
             if (isset($message['role']) && isset($message['content'])) {
@@ -146,6 +174,15 @@ class ModelContextProtocol
             'frequency_penalty' => 0.0,
             'presence_penalty' => 0.0
         ];
+        
+        // Add tools to payload if available
+        if (!empty($this->tools)) {
+            $payload['tools'] = [];
+            foreach ($this->tools as $tool) {
+                $payload['tools'][] = $tool->getFormat();
+            }
+            $payload['tool_choice'] = 'auto';
+        }
         
         $headers = [
             'Content-Type: application/json',
@@ -186,38 +223,76 @@ class ModelContextProtocol
     }
 
     /**
-     * Extract response following official OpenAI format
+     * Process OpenAI response and handle tool calls
      */
-    private function extractResponse(array $response): string
+    private function processResponse(array $response): string
     {
-        $assistantMessage = $response['choices'][0]['message']['content'] ?? 'No response generated.';
-        $finishReason = $response['choices'][0]['finish_reason'] ?? 'unknown';
-        
-        // Log usage information (optional, good practice)
-        if (isset($response['usage'])) {
-            $usage = $response['usage'];
-            error_log("OpenAI API Usage - Prompt: {$usage['prompt_tokens']}, Completion: {$usage['completion_tokens']}, Total: {$usage['total_tokens']}");
+        $choice = $response['choices'][0] ?? null;
+        if (!$choice) {
+            return 'No response generated.';
         }
-        
-        return $assistantMessage;
+
+        $message = $choice['message'] ?? [];
+        $content = $message['content'] ?? '';
+        $toolCalls = $message['tool_calls'] ?? [];
+
+        // If there are tool calls, execute them
+        if (!empty($toolCalls)) {
+            $toolResults = [];
+            
+            foreach ($toolCalls as $toolCall) {
+                $functionName = $toolCall['function']['name'] ?? '';
+                $arguments = json_decode($toolCall['function']['arguments'] ?? '{}', true);
+                
+                // Find and execute the tool
+                $toolResult = $this->executeTool($functionName, $arguments);
+                $toolResults[] = "Tool: $functionName\nResult: $toolResult";
+            }
+            
+            // Combine content with tool results
+            $finalResponse = $content;
+            if (!empty($toolResults)) {
+                $finalResponse .= "\n\nExecuted tool calls:\n" . implode("\n\n", $toolResults);
+            }
+            
+            return $finalResponse;
+        }
+
+        // No tool calls, return content directly
+        return $content ?: 'No response generated.';
     }
 
     /**
-     * Legacy run method for backward compatibility (example1.php)
+     * Execute a specific tool by name
      */
-    public function run(string $userInput): string
+    private function executeTool(string $toolName, array $arguments): string
     {
-        // Apply guardrails to input
-        foreach ($this->guardrails as $guardrail) {
-            $result = $guardrail->validateInput($userInput);
-            if (!$result['valid']) {
-                return $result['message'];
+        foreach ($this->tools as $tool) {
+            if ($tool->getName() === $toolName) {
+                try {
+                    return $tool->execute($arguments);
+                } catch (Exception $e) {
+                    return "Tool execution error: " . $e->getMessage();
+                }
             }
         }
-
-        // Create a simple thread for legacy support using OpenAI format
-        $thread = [['role' => 'user', 'content' => $userInput]];
         
-        return $this->runWithThread($thread);
+        return "Tool '$toolName' not found.";
+    }
+
+    /**
+     * Get all available tools (for debugging/inspection)
+     */
+    public function getTools(): array
+    {
+        return $this->tools;
+    }
+
+    /**
+     * Get all instructions (for debugging/inspection)
+     */
+    public function getInstructions(): array
+    {
+        return $this->instructions;
     }
 }
