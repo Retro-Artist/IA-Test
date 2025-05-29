@@ -9,11 +9,6 @@
  * 3. Instructions - Guidelines defining how the agent behaves
  */
 
-declare(strict_types=1);
-
-/**
- * Base class for the Model Context Protocol
- */
 class ModelContextProtocol
 {
     private string $apiKey;

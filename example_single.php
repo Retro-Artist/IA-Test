@@ -3,8 +3,6 @@
  * Example usage of the Model Context Protocol with Advanced Streaming
  */
 
-declare(strict_types=1);
-
 // Include necessary files with correct paths
 require_once __DIR__ . '/src/Model/ModelContextProtocol.php';
 require_once __DIR__ . '/src/Model/Tool.php';

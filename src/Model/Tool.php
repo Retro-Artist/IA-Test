@@ -6,11 +6,6 @@
  * Each tool has a name, description, parameters, and an execute function.
  */
 
-declare(strict_types=1);
-
-/**
- * Abstract Tool class
- */
 abstract class Tool
 {
     protected string $name;

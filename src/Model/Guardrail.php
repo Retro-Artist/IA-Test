@@ -6,11 +6,6 @@
  * They can validate user input, check tool parameters, or filter model output.
  */
 
-declare(strict_types=1);
-
-/**
- * Abstract Guardrail class
- */
 abstract class Guardrail
 {
     /**

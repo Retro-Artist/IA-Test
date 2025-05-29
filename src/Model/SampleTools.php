@@ -3,15 +3,8 @@
  * Sample Tool implementations for Model Context Protocol
  */
 
-declare(strict_types=1);
-
 require_once 'Tool.php';
 
-/**
- * Weather Tool
- * 
- * Simulates retrieving weather information for a location
- */
 class WeatherTool extends Tool
 {
     public function __construct()

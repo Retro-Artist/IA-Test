@@ -6,14 +6,9 @@
  * each handling a specific task or domain.
  */
 
-declare(strict_types=1);
-
 require_once 'Agent.php';
 require_once 'Guardrail.php';
 
-/**
- * System class - Central manager for multi-agent coordination
- */
 class System
 {
     private Agent $managerAgent;
@@ -64,7 +59,7 @@ class System
      * @param Agent $agent The agent to add
      * @return self
      */
-    public function addAgent(Agent $agent): self
+    public function addAgent(array $agent): self
     {
         $this->specialistAgents[] = $agent;
         

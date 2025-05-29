@@ -5,7 +5,6 @@
  * Environment loading handled by .env only
  */
 
-// Include necessary files with absolute paths
 require_once __DIR__ . '/../src/Model/ModelContextProtocol.php';
 require_once __DIR__ . '/../src/Model/Tool.php';
 require_once __DIR__ . '/../src/Model/Guardrail.php';

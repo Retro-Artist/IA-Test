@@ -6,8 +6,6 @@
  * with simplified usage and automatic configuration loading.
  */
 
-declare(strict_types=1);
-
 require_once 'ModelContextProtocol.php';
 require_once 'Tool.php';
 

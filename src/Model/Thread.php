@@ -3,8 +3,6 @@
  * thread Model for handling database operations
  */
 
-declare(strict_types=1);
-
 class Thread
 {
     private ?PDO $db;
