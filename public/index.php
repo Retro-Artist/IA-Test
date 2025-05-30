@@ -5,7 +5,7 @@
  * Environment loading handled by .env only
  */
 
-require_once __DIR__ . '/../src/Model/ModelContextProtocol.php';
+require_once __DIR__ . '/../src/Model/SystemAPI.php';
 require_once __DIR__ . '/../src/Model/Tool.php';
 require_once __DIR__ . '/../src/Model/Guardrail.php';
 require_once __DIR__ . '/../src/Model/SampleTools.php';
@@ -42,8 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // Add user message to thread using OpenAI format
             $thread->addUserMessage($threadData['thread'], $userInput);
 
-            // Create ModelContextProtocol instance
-            $mcp = new ModelContextProtocol($config);
+            // Create SystemAPI instance
+            $mcp = new SystemAPI($config);
 
 
             $mcp->addInstruction("Você é um assistente útil que fornece informações e realiza tarefas.");
@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $mcp->addGuardrail(new InputLengthGuardrail(500, "Input is too long. Please keep it under 500 characters."));
             $mcp->addGuardrail(new KeywordGuardrail(
                 ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection'],
-                "I cannot process requests related to system exploitation or unauthorized access."
+                "I cannot process requests related to SystemAPI exploitation or unauthorized access."
             ));
 
             // Build notes context

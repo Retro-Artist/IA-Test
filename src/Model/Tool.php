@@ -106,7 +106,7 @@ abstract class Tool
 }
 
 /**
- * HandoffTool - Implements handoff functionality for multi-agent systems
+ * HandoffTool - Implements handoff functionality for multi-agent SystemAPIs
  * 
  * This follows OpenAI's handoff pattern where agents can transfer control
  * to other specialized agents.

@@ -3,7 +3,7 @@ FROM php:8.4.7-fpm
 # Simple PHP Initialization
 # A minimal Docker environment for PHP 8.4.7 development with Nginx
 
-# Install system dependencies
+# Install SystemAPI dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \

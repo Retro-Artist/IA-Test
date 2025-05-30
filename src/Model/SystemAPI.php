@@ -1,15 +1,17 @@
 <?php
 /**
- * Model Context Protocol (MCP) for AI Systems
- *
- * Updated to follow OpenAI's official documentation and best practices
- * This implementation follows the core components approach:
- * 1. Model - The LLM powering the agent's reasoning
- * 2. Tools - Functions the agent can use to take action
- * 3. Instructions - Guidelines defining how the agent behaves
+ * Unified SystemAPI - Single & Multi-Agent Support
+ * 
+ * One class that seamlessly handles both single-agent (direct API calls)
+ * and multi-agent (delegation) paradigms with the same clean interface.
  */
 
-class ModelContextProtocol
+declare(strict_types=1);
+
+/**
+ * SystemAPI class - Unified AI client for single and multi-agent paradigms
+ */
+class SystemAPI
 {
     private string $apiKey;
     private string $model;
@@ -19,9 +21,14 @@ class ModelContextProtocol
     private array $context = [];
     private int $maxTokens;
     private float $temperature;
+    
+    // Multi-agent properties
+    private array $agents = [];
+    private bool $isMultiAgent = false;
+    private ?object $managerAgent = null;
 
     /**
-     * Initialize the MCP with configuration
+     * Initialize the System with configuration
      */
     public function __construct(array $config = [])
     {
@@ -29,48 +36,192 @@ class ModelContextProtocol
         $this->model = $config['model'] ?? 'gpt-4o-mini';
         $this->maxTokens = $config['max_tokens'] ?? 1024;
         $this->temperature = $config['temperature'] ?? 0.7;
+        
+        // Set default config for future agents
+        if (!empty($config)) {
+            $this->setDefaultAgentConfig($config);
+        }
     }
 
     /**
-     * Add an instruction to the agent
+     * Add an instruction to the system
      */
     public function addInstruction(string $instruction): self
     {
         $this->instructions[] = $instruction;
+        
+        // If multi-agent mode, also add to manager
+        if ($this->isMultiAgent && $this->managerAgent) {
+            $this->managerAgent->addInstruction($instruction);
+        }
+        
         return $this;
     }
 
     /**
-     * Add a tool the agent can use
+     * Add a tool to the system
      */
-    public function addTool(Tool $tool): self
+    public function addTool(object $tool): self
     {
         $this->tools[] = $tool;
+        
+        // If multi-agent mode, add to manager
+        if ($this->isMultiAgent && $this->managerAgent) {
+            $this->managerAgent->addTool($tool);
+        }
+        
         return $this;
     }
 
     /**
-     * Add a guardrail to protect the agent's operation
+     * Add a guardrail to the system
      */
-    public function addGuardrail(Guardrail $guardrail): self
+    public function addGuardrail(object $guardrail): self
     {
         $this->guardrails[] = $guardrail;
+        
+        // If multi-agent mode, add to manager
+        if ($this->isMultiAgent && $this->managerAgent) {
+            $this->managerAgent->addGuardrail($guardrail);
+        }
+        
         return $this;
     }
 
     /**
-     * Add context for the conversation
+     * Add context to the system
      */
     public function addContext(string $key, $value): self
     {
         $this->context[$key] = $value;
+        
+        // If multi-agent mode, add to manager
+        if ($this->isMultiAgent && $this->managerAgent) {
+            $this->managerAgent->addContext($key, $value);
+        }
+        
+        return $this;
+    }
+    
+    /**
+     * Add agents to enable multi-agent mode
+     * This is the key method that switches from single to multi-agent!
+     */
+    public function addAgents(array $agents): self
+    {
+        $this->agents = array_merge($this->agents, $agents);
+        
+        // Switch to multi-agent mode
+        if (!$this->isMultiAgent) {
+            $this->switchToMultiAgent();
+        }
+        
+        // Update manager with new agents
+        if ($this->managerAgent) {
+            $this->managerAgent->addHandoffs($this->agents);
+        }
+        
         return $this;
     }
 
     /**
-     * Run the agent with conversation thread (new method for web interface)
+     * Run the system (works for both single and multi-agent)
+     */
+    public function run(string $userInput): string
+    {
+        // Apply guardrails to input
+        foreach ($this->guardrails as $guardrail) {
+            $result = $guardrail->validateInput($userInput);
+            if (!$result['valid']) {
+                return $result['message'];
+            }
+        }
+
+        if ($this->isMultiAgent) {
+            // Multi-agent mode: delegate to manager
+            return $this->managerAgent->execute($userInput);
+        } else {
+            // Single-agent mode: direct API call
+            return $this->runDirect($userInput);
+        }
+    }
+    
+    /**
+     * Execute method (alias for run)
+     */
+    public function execute(string $input): string
+    {
+        return $this->run($input);
+    }
+
+    /**
+     * Switch system to multi-agent mode
+     */
+    private function switchToMultiAgent(): void
+    {
+        $this->isMultiAgent = true;
+        
+        // Create manager agent with existing configuration
+        require_once 'Agent.php';
+        
+        $this->managerAgent = new Agent(
+            "System Manager",
+            "You are a central coordinator that delegates tasks to specialized agents. " .
+            "Analyze user requests and handoff to the most appropriate specialist agent. " .
+            "Always use handoffs for specialized tasks rather than attempting them yourself."
+        );
+        
+        // Transfer existing configuration to manager
+        foreach ($this->instructions as $instruction) {
+            $this->managerAgent->addInstruction($instruction);
+        }
+        
+        foreach ($this->tools as $tool) {
+            $this->managerAgent->addTool($tool);
+        }
+        
+        foreach ($this->guardrails as $guardrail) {
+            $this->managerAgent->addGuardrail($guardrail);
+        }
+        
+        foreach ($this->context as $key => $value) {
+            $this->managerAgent->addContext($key, $value);
+        }
+    }
+
+    /**
+     * Direct single-agent execution (original ModelContextProtocol logic)
+     */
+    private function runDirect(string $userInput): string
+    {
+        // Create a simple thread for single-agent support
+        $thread = [['role' => 'user', 'content' => $userInput]];
+        
+        return $this->runWithThread($thread);
+    }
+
+    /**
+     * Run with conversation thread (for web interface compatibility)
      */
     public function runWithThread(array $thread, string $notesContext = ''): string
+    {
+        if ($this->isMultiAgent) {
+            // In multi-agent mode, delegate to manager
+            $latestMessage = end($thread);
+            if ($latestMessage && $latestMessage['role'] === 'user') {
+                return $this->managerAgent->execute($latestMessage['content']);
+            }
+            return 'No user message found.';
+        }
+        
+        // Single-agent mode: direct API call logic
+        return $this->processSingleAgentThread($thread, $notesContext);
+    }
+    
+    /**
+     * Process thread for single-agent mode (original logic)
+     */
+    private function processSingleAgentThread(array $thread, string $notesContext = ''): string
     {
         // Apply guardrails to the latest user input
         $latestMessage = end($thread);
@@ -103,47 +254,27 @@ class ModelContextProtocol
         // Build messages array following OpenAI format
         $messages = $this->buildMessages($thread, $systemPrompt);
         
-        // Call OpenAI API with tools if available
+        // Call OpenAI API
         $response = $this->callOpenAI($messages);
         
         return $this->processResponse($response);
     }
 
     /**
-     * Legacy run method for backward compatibility and CLI usage
-     */
-    public function run(string $userInput): string
-    {
-        // Apply guardrails to input
-        foreach ($this->guardrails as $guardrail) {
-            $result = $guardrail->validateInput($userInput);
-            if (!$result['valid']) {
-                return $result['message'];
-            }
-        }
-
-        // Create a simple thread for legacy support using OpenAI format
-        $thread = [['role' => 'user', 'content' => $userInput]];
-        
-        return $this->runWithThread($thread);
-    }
-
-    /**
-     * Build OpenAI messages array following official format
+     * Build OpenAI messages array
      */
     private function buildMessages(array $thread, string $systemPrompt): array
     {
         $messages = [];
         
-        // 1. System message MUST be first (OpenAI best practice)
+        // System message first
         $messages[] = [
             'role' => 'system',
             'content' => $systemPrompt
         ];
         
-        // 2. Add conversation history - thread is already in OpenAI format
+        // Add conversation history
         foreach ($thread as $message) {
-            // Ensure the message has the correct OpenAI format
             if (isset($message['role']) && isset($message['content'])) {
                 $messages[] = [
                     'role' => $message['role'],
@@ -156,7 +287,7 @@ class ModelContextProtocol
     }
 
     /**
-     * Call OpenAI API following official documentation
+     * Call OpenAI API
      */
     private function callOpenAI(array $messages): array
     {
@@ -253,7 +384,6 @@ class ModelContextProtocol
             return $finalResponse;
         }
 
-        // No tool calls, return content directly
         return $content ?: 'No response generated.';
     }
 
@@ -274,9 +404,20 @@ class ModelContextProtocol
         
         return "Tool '$toolName' not found.";
     }
+    
+    /**
+     * Set default configuration for future agents
+     */
+    private function setDefaultAgentConfig(array $config): void
+    {
+        // This will be called when Agent class is loaded
+        if (class_exists('Agent')) {
+            Agent::setDefaultConfig($config);
+        }
+    }
 
     /**
-     * Get all available tools (for debugging/inspection)
+     * Get all tools (for debugging)
      */
     public function getTools(): array
     {
@@ -284,10 +425,26 @@ class ModelContextProtocol
     }
 
     /**
-     * Get all instructions (for debugging/inspection)
+     * Get all instructions (for debugging)
      */
     public function getInstructions(): array
     {
         return $this->instructions;
+    }
+    
+    /**
+     * Check if system is in multi-agent mode
+     */
+    public function isMultiAgentMode(): bool
+    {
+        return $this->isMultiAgent;
+    }
+    
+    /**
+     * Get all agents (for debugging)
+     */
+    public function getAgents(): array
+    {
+        return $this->agents;
     }
 }

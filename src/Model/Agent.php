@@ -2,19 +2,19 @@
 /**
  * Enhanced Agent class following OpenAI's pattern with default configuration
  * 
- * This implements handoff-based multi-agent system similar to OpenAI's Python SDK
+ * This implements handoff-based multi-agent SystemAPI similar to OpenAI's Python SDK
  * with simplified usage and automatic configuration loading.
  */
 
 declare(strict_types=1);
 
-require_once 'ModelContextProtocol.php';
+require_once 'SystemAPI.php';
 require_once 'Tool.php';
 
 /**
  * Enhanced Agent class with default configuration and flexible tool support
  */
-class Agent extends ModelContextProtocol
+class Agent extends SystemAPI
 {
     private static ?array $defaultConfig = null;
     private string $name;

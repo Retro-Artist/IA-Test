@@ -1,77 +1,79 @@
 <?php
 /**
- * Single-Agent System Example with Manager Pattern
- *
- * This example demonstrates the OpenAI-style direct system call
- * where a single assistant handles all requests directly with tools.
+ * Single-Agent System Example
+ * 
+ * Direct API calls through unified System class
  */
 
-// Include necessary files with correct paths
-require_once __DIR__ . '/src/Model/ModelContextProtocol.php';
+declare(strict_types=1);
+
+// Include necessary files
+require_once __DIR__ . '/src/Model/SystemAPI.php';
 require_once __DIR__ . '/src/Model/Tool.php';
 require_once __DIR__ . '/src/Model/Guardrail.php';
 require_once __DIR__ . '/src/Model/SampleTools.php';
 
-// Load configuration with correct path
+// Load configuration
 $config = require_once __DIR__ . '/config/config.php';
 
-// Check if API key is configured
 if (empty($config['api_key'])) {
-    echo "Error: OpenAI API key not found. Please check your .env file\n";
-    echo "Make sure you have:\n";
-    echo "1. Copied .env.example to .env\n";
-    echo "2. Added your OpenAI API key to the .env file\n";
-    echo "3. The .env file is in the root directory\n\n";
+    echo "❌ Error: OpenAI API key not found. Please check your .env file\n";
     die();
 }
 
-// Create a new ModelContextProtocol instance
-$mcp = new ModelContextProtocol($config);
+// Create unified SystemAPI instance (single-agent mode)
+$system = new SystemAPI($config);
 
-// Add instructions to define the agent's behavior
-$mcp->addInstruction("You are a helpful assistant that provides information and performs tasks.");
-$mcp->addInstruction("Always be polite and concise in your responses.");
-$mcp->addInstruction("If you're unsure about something, acknowledge your uncertainty.");
-$mcp->addInstruction("Use the tools available to you when appropriate to answer questions.");
+// Add instructions
+$system->addInstruction("You are a helpful assistant that provides information and performs tasks.");
+$system->addInstruction("Always be polite and concise in your responses.");
+$system->addInstruction("Use the tools available to you when appropriate to answer questions.");
 
-// Add tools to extend the agent's capabilities
-$mcp->addTool(new WeatherTool());
-$mcp->addTool(new CalculatorTool());
-$mcp->addTool(new SearchTool());
+// Add tools
+$system->addTool(new WeatherTool());
+$system->addTool(new CalculatorTool());
+$system->addTool(new SearchTool());
 
-// Add guardrails to protect the agent's operation
-$mcp->addGuardrail(new InputLengthGuardrail(60, "Input is too long. Please keep it under 60 characters."));
-$mcp->addGuardrail(new KeywordGuardrail(
-    ['hack', 'exploit', 'bypass', 'jailbreak', 'prompt injection', 'profanity', 'violence'], 
-    "I cannot process requests related to system exploitation or unauthorized access."
-));
+// Add guardrails
+$system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
+$system->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
 
-// Add context to the thread
-$mcp->addContext('username', 'User');
-$mcp->addContext('current_date', date('Y-m-d'));
-$mcp->addContext('session_id', uniqid());
+// Add context
+$system->addContext('username', 'Ryan');
+$system->addContext('current_date', date('Y-m-d'));
+$system->addContext('session_id', uniqid());
 
-// CLI Interface loop for testing the multi-agent system
-echo "Welcome to the OpenAI-Style Single-Chat System!\n";
-echo "===============================================\n";
+// CLI Interface
+echo "Welcome to the Single-Agent System!\n";
+echo "==================================\n";
+echo "Direct API calls with tools and context.\n";
 echo "Type 'exit' to quit.\n\n";
+
+echo "Examples:\n";
+echo "- \"What's my name?\" (should know you're Ryan)\n";
+echo "- \"What's the weather in Paris?\"\n";
+echo "- \"Calculate 25 times 47\"\n";
+echo "- \"Search for PHP tutorials\"\n\n";
 
 while (true) {
     echo "> ";
-    $input = trim(fgets(STDIN));
+    $input = trim(fgets(STDIN) ?: '');
     
-    if ($input === 'exit') {
+    if (strtolower($input) === 'exit') {
+        echo "Good Bye, Ryan!\n";
         break;
     }
     
+    if ($input === '') {
+        echo "Please enter a question or command.\n\n";
+        continue;
+    }
+    
+    echo "\n🤖 Processing your request...\n";
     try {
-        // Use the run method for single interactions
-        $response = $mcp->run($input);
-        echo "\n" . $response . "\n\n";
-        
-    } catch (Exception $e) {
-        echo "\nError: " . $e->getMessage() . "\n\n";
+        $response = $system->run($input);
+        echo "\n{$response}\n\n";
+    } catch (Throwable $e) {
+        echo "\n❌ Error: " . $e->getMessage() . "\n\n";
     }
 }
-
-echo "Goodbye!\n";

@@ -3,7 +3,7 @@
  * Sample Tool implementations for Model Context Protocol
  */
 
-require_once 'Tool.php';
+require '/src/Model/Tool.php';
 
 class WeatherTool extends Tool
 {
@@ -304,6 +304,9 @@ class MultiplyTool extends Tool
  * 
  * Performs subtraction operations
  */
+
+require_once 'Tool.php';
+
 class SubtractTool extends Tool
 {
     public function __construct()
