@@ -25,25 +25,6 @@ if (empty($config['api_key'])) {
 // Create unified SystemAPI instance (same as single-agent!)
 $system = new SystemAPI($config);
 
-// Add instructions (same as single-agent!)
-$system->addInstruction("You are a helpful assistant that provides information and performs tasks.");
-$system->addInstruction("Always be polite and concise in your responses.");
-$system->addInstruction("Use the tools available to you when appropriate to answer questions.");
-
-// Add tools (same as single-agent!)
-$system->addTool(new WeatherTool());
-$system->addTool(new CalculatorTool());
-$system->addTool(new SearchTool());
-
-// Add guardrails (same as single-agent!)
-$system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
-$system->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
-
-// Add context (same as single-agent!)
-$system->addContext('username', 'Ryan');
-$system->addContext('current_date', date('Y-m-d'));
-$system->addContext('session_id', uniqid());
-
 /*==================================
     PROGRESSION: Add Specialized Agents
 ===================================*/
@@ -75,8 +56,28 @@ $mathAgent = new Agent(
     $subtractTool
 );
 
+
 // ✨ THE MAGIC LINE: Switch to multi-agent mode!
 $system->addAgents([$spanishAgent, $weatherAgent, $mathAgent]);
+
+// Add instructions (same as single-agent!)
+$system->addInstruction("You are a helpful assistant that provides information and performs tasks.");
+$system->addInstruction("Always be polite and concise in your responses.");
+$system->addInstruction("Use the tools available to you when appropriate to answer questions.");
+
+// Add tools (same as single-agent!)
+$system->addTool(new WeatherTool());
+$system->addTool(new CalculatorTool());
+$system->addTool(new SearchTool());
+
+// Add guardrails (same as single-agent!)
+$system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
+$system->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
+
+// Add context (same as single-agent!)
+$system->addContext('username', 'Ryan');
+$system->addContext('current_date', date('Y-m-d'));
+$system->addContext('session_id', uniqid());
 
 /*==================================
            CLI Interface

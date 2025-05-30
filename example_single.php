@@ -11,7 +11,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/src/Model/SystemAPI.php';
 require_once __DIR__ . '/src/Model/Tool.php';
 require_once __DIR__ . '/src/Model/Guardrail.php';
-require_once __DIR__ . '/src/Model/SampleTools.php';
+require_once __DIR__ . '/src/Tools/SampleTools.php';
 
 // Load configuration
 $config = require_once __DIR__ . '/config/config.php';
