@@ -31,8 +31,8 @@ $system->addInstruction("Use the tools available to you when appropriate to answ
 
 // Add tools
 $system->addTool(new WeatherTool());
-$system->addTool(new CalculatorTool());
 $system->addTool(new SearchTool());
+$system->addTool(new CalculusTool());
 
 // Add guardrails
 $system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
@@ -46,14 +46,6 @@ $system->addContext('session_id', uniqid());
 // CLI Interface
 echo "Welcome to the Single-Agent System!\n";
 echo "==================================\n";
-echo "Direct API calls with tools and context.\n";
-echo "Type 'exit' to quit.\n\n";
-
-echo "Examples:\n";
-echo "- \"What's my name?\" (should know you're Ryan)\n";
-echo "- \"What's the weather in Paris?\"\n";
-echo "- \"Calculate 25 times 47\"\n";
-echo "- \"Search for PHP tutorials\"\n\n";
 
 while (true) {
     echo "> ";

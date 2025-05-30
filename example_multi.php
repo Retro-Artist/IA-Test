@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 // Include necessary files (same as single-agent!)
 require_once __DIR__ . '/src/Model/SystemAPI.php';
-require_once __DIR__ . '/src/Model/Agent.php';          // ← ONLY ADDITION
+require_once __DIR__ . '/src/Model/Agent.php';// ← ONLY ADDITION
 require_once __DIR__ . '/src/Model/Tool.php';
 require_once __DIR__ . '/src/Model/Guardrail.php';
 require_once __DIR__ . '/src/Tools/SampleTools.php';
@@ -28,14 +28,11 @@ $system = new SystemAPI($config);
 /*==================================
     PROGRESSION: Add Specialized Agents
 ===================================*/
-
-// Create tools for agents
 $translateTool = new TranslateTool();
-$divideTool = new DivideTool();
-$multiplyTool = new MultiplyTool();
-$subtractTool = new SubtractTool();
+$calculusTool = new CalculusTool();
+$weatherTool = new WeatherTool();
 
-// Create specialized agents
+
 $spanishAgent = new Agent(
     "Spanish Agent",
     "You translate text between English and Spanish, correct Spanish grammar, and explain idioms.",
@@ -45,15 +42,13 @@ $spanishAgent = new Agent(
 $weatherAgent = new Agent(
     "Weather Agent",
     "You provide current weather information and forecasts via a weather API.",
-    new WeatherTool()  // Weather agent gets its own weather tool
+    $weatherTool
 );
 
 $mathAgent = new Agent(
     "Math Agent", 
     "You perform simple arithmetic: add, subtract, multiply, and divide.",
-    $divideTool,
-    $multiplyTool,
-    $subtractTool
+    $calculusTool
 );
 
 
@@ -67,7 +62,7 @@ $system->addInstruction("Use the tools available to you when appropriate to answ
 
 // Add tools (same as single-agent!)
 $system->addTool(new WeatherTool());
-$system->addTool(new CalculatorTool());
+$system->addTool(new CalculusTool());
 $system->addTool(new SearchTool());
 
 // Add guardrails (same as single-agent!)
@@ -85,15 +80,6 @@ $system->addContext('session_id', uniqid());
 
 echo "Welcome to the Multi-Agent System!\n";
 echo "==================================\n";
-echo "Same System class, now with specialized agents!\n";
-echo "Mode: " . ($system->isMultiAgentMode() ? "Multi-Agent" : "Single-Agent") . "\n";
-echo "Type 'exit' to quit.\n\n";
-
-echo "Examples:\n";
-echo "- \"What's my name?\" (should know you're Ryan)\n";
-echo "- \"Hola, ¿cómo estás?\" (Spanish Agent)\n";
-echo "- \"What's the weather in Madrid?\" (Weather Agent)\n";
-echo "- \"Calculate 25 / 5\" (Math Agent)\n\n";
 
 while (true) {
     echo "> ";

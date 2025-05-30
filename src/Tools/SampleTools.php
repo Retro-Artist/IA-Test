@@ -41,7 +41,7 @@ class WeatherTool extends Tool
  * 
  * Performs basic arithmetic operations
  */
-class CalculatorTool extends Tool
+class CalculusTool extends Tool
 {
     public function __construct()
     {
