@@ -1,6 +1,9 @@
 <?php
 /**
- * Example usage of the Model Context Protocol with Advanced Streaming
+ * Single-Agent System Example with Manager Pattern
+ *
+ * This example demonstrates the OpenAI-style direct system call
+ * where a single assistant handles all requests directly with tools.
  */
 
 // Include necessary files with correct paths
@@ -48,9 +51,10 @@ $mcp->addContext('username', 'User');
 $mcp->addContext('current_date', date('Y-m-d'));
 $mcp->addContext('session_id', uniqid());
 
-// CLI interaction loop
-echo "Model Context Protocol Example with Advanced Streaming\n";
-echo "Type 'exit' to quit\n\n";
+// CLI Interface loop for testing the multi-agent system
+echo "Welcome to the OpenAI-Style Single-Chat System!\n";
+echo "===============================================\n";
+echo "Type 'exit' to quit.\n\n";
 
 while (true) {
     echo "> ";

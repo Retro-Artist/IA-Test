@@ -3,7 +3,7 @@
  * Multi-Agent System Example with Manager Pattern
  * 
  * This example demonstrates the OpenAI-style manager pattern
- * where a central manager coordinates specialized agents via tool calls.
+ * where a central manager coordinates all specialized agents.
  */
 
 declare(strict_types=1);
@@ -18,12 +18,16 @@ require_once __DIR__ . '/src/Model/SampleTools.php';
 // Load configuration
 $config = require_once __DIR__ . '/config/config.php';
 
-$system = new System($config);
-
+/*==================================
+             Tools Setup
+===================================*/
 $translateTool = new TranslateTool();
 $weatherTool   = new WeatherTool();
 $multiplyTool  = new MultiplyTool();
 
+/*==================================
+             Agents Setup
+===================================*/
 $spanishAgent = new Agent(
     "Spanish Agent", 
     "You translate text between English and Spanish, correct Spanish grammar, and explain idioms."
@@ -41,8 +45,14 @@ $mathAgent = new Agent(
     $multiplyTool,
 );
 
-// Add agents to the system (manager pattern)
+/*==================================
+            System Setup
+===================================*/
+$system = new System($config);
 $system->addAgents([$spanishAgent, $weatherAgent, $mathAgent]);
+$system->addInstruction("You are a helpful assistant that can perform various tasks. Use the appropriate agent for each task.");
+$system->addInstruction("If you don't know the answer, politely inform the user.");
+$system->addInstruction("Use the tools available to you when appropriate to answer questions.");
 $system->addGuardrail(new InputLengthGuardrail(1000, "Input too long."));
 $system->addGuardrail(new KeywordGuardrail(['spam', 'abuse'], "Inappropriate content."));
 
