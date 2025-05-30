@@ -6,6 +6,8 @@
  * with simplified usage and automatic configuration loading.
  */
 
+declare(strict_types=1);
+
 require_once 'ModelContextProtocol.php';
 require_once 'Tool.php';
 
@@ -120,5 +122,18 @@ class Agent extends ModelContextProtocol
     public function execute(string $input): string
     {
         return $this->run($input);
+    }
+    
+    /**
+     * Override addContext to ensure it's properly handled
+     * 
+     * @param string $key The context key
+     * @param mixed $value The context value
+     * @return self
+     */
+    public function addContext(string $key, $value): self
+    {
+        parent::addContext($key, $value);
+        return $this;
     }
 }
