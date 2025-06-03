@@ -1,8 +1,8 @@
 <?php
 /**
- * Multi-Agent Chat System - Explicit Instructions Design
+ * Clean Multi-Agent Chat System - Final Version
  * 
- * All prompts and instructions are explicitly defined here for maximum maintainability
+ * Streamlined with only essential functions and explicit instructions
  */
 
 declare(strict_types=1);
@@ -62,19 +62,13 @@ $managerAgent = new Agent(
 $system->addAgents([$managerAgent, $spanishAgent, $weatherAgent, $mathAgent]);
 
 /*==================================
-        System-Wide Instructions
+        System Configuration
 ===================================*/
 $system->addInstruction("You are a helpful, polite, and efficient multi-agent assistant system. You coordinate specialized agents to provide accurate and comprehensive responses. Always prioritize accuracy and helpfulness in your responses. If you're unsure about something, clearly communicate that uncertainty.");
 
-/*==================================
-        Quality & Safety Controls
-===================================*/
 $system->addGuardrail(new InputLengthGuardrail(1000, "Input too long. Please keep it under 1000 characters."));
 $system->addGuardrail(new KeywordGuardrail(['spam', 'abuse', 'hack'], "Inappropriate content detected."));
 
-/*==================================
-           Session Context
-===================================*/
 $system->addContext('username', 'Ryan');
 $system->addContext('current_date', date('Y-m-d'));
 $system->addContext('session_id', uniqid());
@@ -82,12 +76,23 @@ $system->addContext('session_id', uniqid());
 /*==================================
            CLI Interface
 ===================================*/
-echo "🤖 Enhanced Multi-Agent Chat System\n";
-echo "===================================\n";
-echo "Using Explicit Instructions for Maximum Maintainability\n\n";
+echo "🤖 Clean Multi-Agent Chat System\n";
+echo "=================================\n";
+echo "Using OpenAI Tool Calls with ReAct Loop\n\n";
 
-echo "Debug commands:\n";
-echo "- 'debug' - Toggle simple debug mode (first payload only)\n";
+echo "Available agents:\n";
+echo "• Spanish Agent - Translation & Language\n";
+echo "• Weather Agent - Weather Information\n";  
+echo "• Math Agent - Calculations & Math\n";
+echo "• Manager Agent - Task Coordination\n\n";
+
+echo "Try multi-step requests like:\n";
+echo "- 'What's the weather in Madrid and translate it to Spanish?'\n";
+echo "- 'Calculate 25 * 8 and then tell me the weather in Tokyo'\n";
+echo "- 'Translate hello to Spanish and add 5 + 3'\n\n";
+
+echo "Commands:\n";
+echo "- 'debug' - Toggle simple debug mode\n";
 echo "- 'full-debug' - Toggle full ReAct loop debugging\n";
 echo "- 'show-instructions' - Display all system instructions and agent roles\n";
 echo "- 'exit' - Quit\n\n";

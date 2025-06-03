@@ -1,10 +1,15 @@
 <?php
 /**
- * Sample Tool implementations for Model Context Protocol
+ * Enhanced Sample Tools with Intelligent Self-Parsing
+ * 
+ * Each tool handles its own argument parsing and logic - proper separation of concerns
  */
 
 require_once __DIR__ . '/../Model/Tool.php';
 
+/**
+ * Weather Tool - Handles all weather-related logic
+ */
 class WeatherTool extends Tool
 {
     public function __construct()
@@ -20,12 +25,35 @@ class WeatherTool extends Tool
         ];
     }
     
+    /**
+     * Get OpenAI tool definition for this tool
+     */
+    public function getOpenAIDefinition(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'weather_agent',
+                'description' => 'Get current weather information for any location worldwide',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'location' => [
+                            'type' => 'string',
+                            'description' => 'The city/location to get weather for (e.g., "Madrid", "New York", "Tokyo")'
+                        ]
+                    ],
+                    'required' => ['location']
+                ]
+            ]
+        ];
+    }
+    
     public function execute(array $arguments): string
     {
-        $location = $arguments['location'] ?? 'Unknown';
+        $location = $this->extractLocation($arguments);
         
-        // In a real implementation, this would call a weather API
-        // For demo purposes, we'll just return some mock data
+        // Mock weather data
         $weatherConditions = ['sunny', 'partly cloudy', 'cloudy', 'rainy', 'stormy', 'snowy'];
         $temperatures = [15, 22, 28, 5, 35, -2, 18, 25];
         
@@ -34,12 +62,40 @@ class WeatherTool extends Tool
         
         return "The weather in $location is currently $condition with a temperature of {$temperature}°C.";
     }
+    
+    /**
+     * Extract location from various argument formats
+     */
+    private function extractLocation(array $arguments): string
+    {
+        // Direct location argument
+        if (!empty($arguments['location'])) {
+            return $arguments['location'];
+        }
+        
+        // Extract from task description
+        $task = $arguments['task'] ?? '';
+        
+        // Weather-specific patterns
+        $patterns = [
+            '/weather\s+(?:in|for)\s+([^,.\n?]+)/i',
+            '/(?:get|tell|show).*weather.*(?:in|for)\s+([^,.\n?]+)/i',
+            '/(?:in|for)\s+([A-Za-z\s]+)(?:\s|$)/i'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $task, $matches)) {
+                return trim($matches[1]);
+            }
+        }
+        
+        // Default location
+        return 'New York';
+    }
 }
 
 /**
- * Calculator Tool
- * 
- * Performs basic arithmetic operations
+ * Calculator Tool - Handles all mathematical operations and parsing
  */
 class CalculusTool extends Tool
 {
@@ -51,15 +107,44 @@ class CalculusTool extends Tool
             'operation' => [
                 'type' => 'string',
                 'description' => 'The operation to perform: add, subtract, multiply, or divide',
-                'required' => true
+                'required' => false
             ],
             'numbers' => [
                 'type' => 'array',
                 'description' => 'The numbers to operate on',
-                'required' => true,
+                'required' => false,
                 'items' => [
                     'type' => 'number',
                     'description' => 'A numeric value'
+                ]
+            ],
+            'expression' => [
+                'type' => 'string',
+                'description' => 'Mathematical expression like "25 * 8" or "15 + 27"',
+                'required' => false
+            ]
+        ];
+    }
+    
+    /**
+     * Get OpenAI tool definition for this tool
+     */
+    public function getOpenAIDefinition(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'math_agent',
+                'description' => 'Perform mathematical calculations and arithmetic operations',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'expression' => [
+                            'type' => 'string',
+                            'description' => 'The mathematical expression to calculate (e.g., "25 * 8", "15 + 27")'
+                        ]
+                    ],
+                    'required' => ['expression']
                 ]
             ]
         ];
@@ -67,14 +152,107 @@ class CalculusTool extends Tool
     
     public function execute(array $arguments): string
     {
-        $operation = $arguments['operation'] ?? '';
-        $numbers = $arguments['numbers'] ?? [];
+        // Try to parse the expression or task
+        $result = $this->parseAndCalculate($arguments);
         
+        if ($result === null) {
+            return "Error: Unable to parse mathematical expression from input.";
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Parse and calculate from various input formats
+     */
+    private function parseAndCalculate(array $arguments): ?string
+    {
+        // Direct expression
+        if (!empty($arguments['expression'])) {
+            return $this->evaluateExpression($arguments['expression']);
+        }
+        
+        // Direct operation and numbers
+        if (!empty($arguments['operation']) && !empty($arguments['numbers'])) {
+            return $this->performOperation($arguments['operation'], $arguments['numbers']);
+        }
+        
+        // Parse from task description
+        $task = $arguments['task'] ?? '';
+        if (!empty($task)) {
+            return $this->parseTaskExpression($task);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * Parse mathematical expressions from natural language
+     */
+    private function parseTaskExpression(string $task): ?string
+    {
+        // Remove common prefixes
+        $task = preg_replace('/^(?:calculate|compute|what\'?s|find)\s*/i', '', $task);
+        $task = preg_replace('/\s*[?.]?\s*$/', '', $task); // Remove trailing punctuation
+        
+        // Basic arithmetic patterns
+        $patterns = [
+            // Addition: "25 + 8", "add 25 and 8"
+            '/(?:add\s+)?(\d+(?:\.\d+)?)\s*(?:\+|and|plus)\s*(\d+(?:\.\d+)?)/i' => 'add',
+            // Subtraction: "25 - 8", "subtract 8 from 25"
+            '/(?:subtract\s+(\d+(?:\.\d+)?)\s+from\s+(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:\-|minus)\s*(\d+(?:\.\d+)?))/i' => 'subtract',
+            // Multiplication: "25 * 8", "25 times 8", "multiply 25 by 8"
+            '/(?:multiply\s+(\d+(?:\.\d+)?)\s+by\s+(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:\*|×|times)\s*(\d+(?:\.\d+)?))/i' => 'multiply',
+            // Division: "25 / 8", "25 divided by 8", "divide 25 by 8"
+            '/(?:divide\s+(\d+(?:\.\d+)?)\s+by\s+(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)\s*(?:\/|÷|divided\s+by)\s*(\d+(?:\.\d+)?))/i' => 'divide'
+        ];
+        
+        foreach ($patterns as $pattern => $operation) {
+            if (preg_match($pattern, $task, $matches)) {
+                // Extract numbers (handles different capture group arrangements)
+                $numbers = array_filter($matches, function($match, $index) {
+                    return $index > 0 && is_numeric($match);
+                }, ARRAY_FILTER_USE_BOTH);
+                
+                if (count($numbers) >= 2) {
+                    $nums = array_values($numbers);
+                    return $this->performOperation($operation, [(float)$nums[0], (float)$nums[1]]);
+                }
+            }
+        }
+        
+        // Try simple expression evaluation
+        return $this->evaluateExpression($task);
+    }
+    
+    /**
+     * Evaluate simple mathematical expressions
+     */
+    private function evaluateExpression(string $expression): ?string
+    {
+        // Basic safety check - only allow numbers and basic operators
+        if (!preg_match('/^[\d\s+\-*\/().]+$/', $expression)) {
+            return null;
+        }
+        
+        try {
+            // Simple evaluation for basic expressions
+            $result = eval("return $expression;");
+            return "$expression = $result";
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+    
+    /**
+     * Perform specific mathematical operations
+     */
+    private function performOperation(string $operation, array $numbers): string
+    {
         if (empty($numbers) || !is_array($numbers)) {
             return "Error: No numbers provided for calculation.";
         }
         
-        // Convert all elements to numbers
         $numbers = array_map('floatval', $numbers);
         
         switch ($operation) {
@@ -125,48 +303,7 @@ class CalculusTool extends Tool
 }
 
 /**
- * Search Tool
- * 
- * Simulates a search operation
- */
-class SearchTool extends Tool
-{
-    public function __construct()
-    {
-        $this->name = 'search';
-        $this->description = 'Search for information on a topic';
-        $this->parameters = [
-            'query' => [
-                'type' => 'string',
-                'description' => 'The search query',
-                'required' => true
-            ]
-        ];
-    }
-    
-    public function execute(array $arguments): string
-    {
-        $query = $arguments['query'] ?? '';
-        
-        // In a real implementation, this would call a search API
-        // For demo purposes, we'll just return mock data
-        return "Here are some simulated search results for: '$query'\n" .
-               "1. Wikipedia article: About $query\n" .
-               "2. Latest news on $query\n" .
-               "3. Academic papers related to $query";
-    }
-}
-
-
-/**
- * Additional specialized tools for the multi-agent system
- * To be added to the existing SampleTools.php file
- */
-
-/**
- * Translation Tool
- * 
- * Handles text translation between languages
+ * Translation Tool - Handles all translation logic and parsing
  */
 class TranslateTool extends Tool
 {
@@ -184,20 +321,141 @@ class TranslateTool extends Tool
                 'type' => 'string',
                 'description' => 'The task: translate_to_spanish, translate_to_english, correct_grammar, or explain_idiom',
                 'required' => false
+            ],
+            'direction' => [
+                'type' => 'string',
+                'description' => 'Translation direction: to_spanish or to_english',
+                'required' => false
+            ]
+        ];
+    }
+    
+    /**
+     * Get OpenAI tool definition for this tool
+     */
+    public function getOpenAIDefinition(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'spanish_agent',
+                'description' => 'Translate text from English to Spanish or Spanish to English',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'text' => [
+                            'type' => 'string',
+                            'description' => 'The text to translate'
+                        ],
+                        'direction' => [
+                            'type' => 'string',
+                            'description' => 'Translation direction: "to_spanish" or "to_english"',
+                            'enum' => ['to_spanish', 'to_english']
+                        ]
+                    ],
+                    'required' => ['text']
+                ]
             ]
         ];
     }
     
     public function execute(array $arguments): string
     {
-        $text = $arguments['text'] ?? '';
-        $task = $arguments['task'] ?? 'translate';
+        $text = $this->extractText($arguments);
+        $direction = $this->determineDirection($arguments);
         
         if (empty($text)) {
             return "Error: No text provided for translation.";
         }
         
-        // Simple translation simulation
+        return $this->performTranslation($text, $direction);
+    }
+    
+    /**
+     * Extract text to translate from various argument formats
+     */
+    private function extractText(array $arguments): string
+    {
+        // Direct text argument
+        if (!empty($arguments['text'])) {
+            return $arguments['text'];
+        }
+        
+        // Extract from task description
+        $task = $arguments['task'] ?? '';
+        
+        // Translation-specific patterns
+        $patterns = [
+            '/translate\s+["\']([^"\']+)["\'](?:\s+to\s+\w+)?/i',
+            '/translate\s+(?:the\s+)?(?:text\s+)?["\']?([^"\']+?)["\']?(?:\s+to\s+\w+)?$/i',
+            '/["\']([^"\']+)["\'].*translate/i'
+        ];
+        
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $task, $matches)) {
+                return trim($matches[1]);
+            }
+        }
+        
+        // If no pattern matches, assume the whole task is the text to translate
+        $cleanTask = preg_replace('/^(?:translate|to spanish|to english)\s*/i', '', $task);
+        return trim($cleanTask);
+    }
+    
+    /**
+     * Determine translation direction from arguments and context
+     */
+    private function determineDirection(array $arguments): string
+    {
+        // Direct direction argument
+        if (!empty($arguments['direction'])) {
+            return $arguments['direction'];
+        }
+        
+        // Check task for direction indicators
+        $task = strtolower($arguments['task'] ?? '');
+        
+        if (strpos($task, 'to english') !== false || strpos($task, 'english') !== false) {
+            return 'to_english';
+        }
+        
+        if (strpos($task, 'to spanish') !== false || strpos($task, 'spanish') !== false) {
+            return 'to_spanish';
+        }
+        
+        // Try to detect language of input text
+        $text = $arguments['text'] ?? '';
+        if ($this->isSpanish($text)) {
+            return 'to_english';
+        }
+        
+        // Default to Spanish translation
+        return 'to_spanish';
+    }
+    
+    /**
+     * Simple Spanish language detection
+     */
+    private function isSpanish(string $text): bool
+    {
+        $spanishWords = ['el', 'la', 'es', 'de', 'que', 'en', 'un', 'con', 'por', 'está', 'hace', 'tiempo'];
+        $text = strtolower($text);
+        
+        foreach ($spanishWords as $word) {
+            if (strpos($text, $word) !== false) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Perform the actual translation
+     */
+    private function performTranslation(string $text, string $direction): string
+    {
+        // Simple translation simulation with common phrases
         $translations = [
             'hello' => 'hola',
             'goodbye' => 'adiós',
@@ -206,130 +464,103 @@ class TranslateTool extends Tool
             'how are you' => '¿cómo estás?',
             'good morning' => 'buenos días',
             'good night' => 'buenas noches',
+            'yes' => 'sí',
+            'no' => 'no',
+            'water' => 'agua',
+            'food' => 'comida',
+            'house' => 'casa',
+            'car' => 'coche',
+            'beautiful' => 'hermoso',
+            'love' => 'amor',
+            // Reverse mappings
             'hola' => 'hello',
             'adiós' => 'goodbye',
-            'gracias' => 'thank you'
+            'gracias' => 'thank you',
+            'por favor' => 'please',
+            '¿cómo estás?' => 'how are you?',
+            'buenos días' => 'good morning',
+            'buenas noches' => 'good night',
+            'sí' => 'yes',
+            'agua' => 'water',
+            'comida' => 'food',
+            'casa' => 'house',
+            'coche' => 'car',
+            'hermoso' => 'beautiful',
+            'amor' => 'love'
         ];
         
         $lowerText = strtolower($text);
         
         // Check for direct translations
         foreach ($translations as $from => $to) {
-            if (str_contains($lowerText, $from)) {
-                return "Translation: '{$text}' → '{$to}'";
+            if ($lowerText === $from || str_contains($lowerText, $from)) {
+                $directionText = $direction === 'to_english' ? 'English' : 'Spanish';
+                return "Translation to $directionText: '$text' → '$to'";
             }
         }
         
-        // Default response
-        return "Translation service: I can help translate between English and Spanish. Text: '{$text}'";
+        // Default response for unknown phrases
+        $directionText = $direction === 'to_english' ? 'English' : 'Spanish';
+        return "Translation service: I can help translate '$text' to $directionText. (This is a simplified demo translation.)";
     }
 }
 
 /**
- * Divide Tool
- * 
- * Performs division operations
+ * Search Tool - Handles search operations
  */
-class DivideTool extends Tool
+class SearchTool extends Tool
 {
     public function __construct()
     {
-        $this->name = 'divide';
-        $this->description = 'Perform division operations';
+        $this->name = 'search';
+        $this->description = 'Search for information on a topic';
         $this->parameters = [
-            'dividend' => [
-                'type' => 'number',
-                'description' => 'The number to be divided',
+            'query' => [
+                'type' => 'string',
+                'description' => 'The search query',
                 'required' => true
-            ],
-            'divisor' => [
-                'type' => 'number',
-                'description' => 'The number to divide by',
-                'required' => true
+            ]
+        ];
+    }
+    
+    /**
+     * Get OpenAI tool definition for this tool
+     */
+    public function getOpenAIDefinition(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'search_agent',
+                'description' => 'Search for information on any topic',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'query' => [
+                            'type' => 'string',
+                            'description' => 'The search query or topic to search for'
+                        ]
+                    ],
+                    'required' => ['query']
+                ]
             ]
         ];
     }
     
     public function execute(array $arguments): string
     {
-        $dividend = $arguments['dividend'] ?? 0;
-        $divisor = $arguments['divisor'] ?? 0;
+        $query = $arguments['query'] ?? $arguments['task'] ?? '';
         
-        if ($divisor == 0) {
-            return "Error: Cannot divide by zero.";
+        if (empty($query)) {
+            return "Error: No search query provided.";
         }
         
-        $result = $dividend / $divisor;
-        return "{$dividend} ÷ {$divisor} = {$result}";
-    }
-}
-
-/**
- * Multiply Tool
- * 
- * Performs multiplication operations
- */
-class MultiplyTool extends Tool
-{
-    public function __construct()
-    {
-        $this->name = 'multiply';
-        $this->description = 'Perform multiplication operations';
-        $this->parameters = [
-            'factor1' => [
-                'type' => 'number',
-                'description' => 'The first number to multiply',
-                'required' => true
-            ],
-            'factor2' => [
-                'type' => 'number',
-                'description' => 'The second number to multiply',
-                'required' => true
-            ]
-        ];
-    }
-    
-    public function execute(array $arguments): string
-    {
-        $factor1 = $arguments['factor1'] ?? 0;
-        $factor2 = $arguments['factor2'] ?? 0;
+        // Remove common search prefixes
+        $query = preg_replace('/^(?:search for|find|look up)\s*/i', '', $query);
         
-        $result = $factor1 * $factor2;
-        return "{$factor1} × {$factor2} = {$result}";
-    }
-}
-
-/**
- * Subtract Tool
- * 
- * Performs subtraction operations
- */
-class SubtractTool extends Tool
-{
-    public function __construct()
-    {
-        $this->name = 'subtract';
-        $this->description = 'Perform subtraction operations';
-        $this->parameters = [
-            'minuend' => [
-                'type' => 'number',
-                'description' => 'The number to subtract from',
-                'required' => true
-            ],
-            'subtrahend' => [
-                'type' => 'number',
-                'description' => 'The number to subtract',
-                'required' => true
-            ]
-        ];
-    }
-    
-    public function execute(array $arguments): string
-    {
-        $minuend = $arguments['minuend'] ?? 0;
-        $subtrahend = $arguments['subtrahend'] ?? 0;
-        
-        $result = $minuend - $subtrahend;
-        return "{$minuend} - {$subtrahend} = {$result}";
+        return "Here are some simulated search results for: '$query'\n" .
+               "1. Wikipedia article: About $query\n" .
+               "2. Latest news on $query\n" .
+               "3. Academic papers related to $query";
     }
 }
