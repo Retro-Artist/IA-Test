@@ -1,15 +1,14 @@
 <?php
 /**
- * Unified SystemAPI - Single & Multi-Agent Support
+ * Unified SystemAPI - Enhanced with OpenAI Tool Calls for Multi-Agent Systems
  * 
- * One class that seamlessly handles both single-agent (direct API calls)
- * and multi-agent (delegation) paradigms with the same clean interface.
+ * Now properly implements OpenAI's recommended tool_calls pattern for agents
  */
 
 declare(strict_types=1);
 
 /**
- * SystemAPI class - Unified AI client for single and multi-agent paradigms
+ * SystemAPI class - Enhanced for true multi-agent tool calling
  */
 class SystemAPI
 {
@@ -26,6 +25,7 @@ class SystemAPI
     private array $agents = [];
     private bool $isMultiAgent = false;
     private ?object $managerAgent = null;
+    private array $managerInstructions = [];
 
     /**
      * Initialize the System with configuration
@@ -49,12 +49,15 @@ class SystemAPI
     public function addInstruction(string $instruction): self
     {
         $this->instructions[] = $instruction;
-        
-        // If multi-agent mode, also add to manager
-        if ($this->isMultiAgent && $this->managerAgent) {
-            $this->managerAgent->addInstruction($instruction);
-        }
-        
+        return $this;
+    }
+
+    /**
+     * Add manager-specific instructions (visible and explicit)
+     */
+    public function addManagerInstruction(string $instruction): self
+    {
+        $this->managerInstructions[] = $instruction;
         return $this;
     }
 
@@ -64,12 +67,6 @@ class SystemAPI
     public function addTool(object $tool): self
     {
         $this->tools[] = $tool;
-        
-        // If multi-agent mode, add to manager
-        if ($this->isMultiAgent && $this->managerAgent) {
-            $this->managerAgent->addTool($tool);
-        }
-        
         return $this;
     }
 
@@ -79,12 +76,6 @@ class SystemAPI
     public function addGuardrail(object $guardrail): self
     {
         $this->guardrails[] = $guardrail;
-        
-        // If multi-agent mode, add to manager
-        if ($this->isMultiAgent && $this->managerAgent) {
-            $this->managerAgent->addGuardrail($guardrail);
-        }
-        
         return $this;
     }
 
@@ -94,18 +85,12 @@ class SystemAPI
     public function addContext(string $key, $value): self
     {
         $this->context[$key] = $value;
-        
-        // If multi-agent mode, add to manager
-        if ($this->isMultiAgent && $this->managerAgent) {
-            $this->managerAgent->addContext($key, $value);
-        }
-        
         return $this;
     }
     
     /**
      * Add agents to enable multi-agent mode
-     * This is the key method that switches from single to multi-agent!
+     * This switches from single to multi-agent automatically
      */
     public function addAgents(array $agents): self
     {
@@ -116,16 +101,11 @@ class SystemAPI
             $this->switchToMultiAgent();
         }
         
-        // Update manager with new agents
-        if ($this->managerAgent) {
-            $this->managerAgent->addHandoffs($this->agents);
-        }
-        
         return $this;
     }
 
     /**
-     * Run the system (works for both single and multi-agent)
+     * Run the system with clean output (production mode)
      */
     public function run(string $userInput): string
     {
@@ -138,20 +118,54 @@ class SystemAPI
         }
 
         if ($this->isMultiAgent) {
-            // Multi-agent mode: delegate to manager
-            return $this->managerAgent->execute($userInput);
+            // Multi-agent mode: use tool calls
+            return $this->executeMultiAgentToolCalls($userInput);
         } else {
             // Single-agent mode: direct API call
             return $this->runDirect($userInput);
         }
     }
-    
+
     /**
-     * Execute method (alias for run)
+     * Get full OpenAI payload for debugging (debug mode)
      */
-    public function execute(string $input): string
+    public function payload(string $userInput): array
     {
-        return $this->run($input);
+        // Apply guardrails to input
+        foreach ($this->guardrails as $guardrail) {
+            $result = $guardrail->validateInput($userInput);
+            if (!$result['valid']) {
+                return ['error' => $result['message']];
+            }
+        }
+
+        if ($this->isMultiAgent) {
+            // For multi-agent, show the first call payload (for simple debugging)
+            // Use getFullConversationPayload() for complete ReAct loop debugging
+            return $this->getMultiAgentPayload($userInput);
+        } else {
+            return $this->getSingleAgentPayload($userInput);
+        }
+    }
+
+    /**
+     * Get complete ReAct conversation for advanced debugging
+     */
+    public function fullPayload(string $userInput): array
+    {
+        // Apply guardrails to input
+        foreach ($this->guardrails as $guardrail) {
+            $result = $guardrail->validateInput($userInput);
+            if (!$result['valid']) {
+                return ['error' => $result['message']];
+            }
+        }
+
+        if ($this->isMultiAgent) {
+            return $this->getFullConversationPayload($userInput);
+        } else {
+            return ['single_agent_payload' => $this->getSingleAgentPayload($userInput)];
+        }
     }
 
     /**
@@ -161,43 +175,374 @@ class SystemAPI
     {
         $this->isMultiAgent = true;
         
-        // Create manager agent with existing configuration
-        require_once 'Agent.php';
-        
-        $this->managerAgent = new Agent(
-            "System Manager",
-            "You are a central coordinator that delegates tasks to specialized agents. " .
-            "Analyze user requests and handoff to the most appropriate specialist agent. " .
-            "Always use handoffs for specialized tasks rather than attempting them yourself."
-        );
-        
-        // Transfer existing configuration to manager
-        foreach ($this->instructions as $instruction) {
-            $this->managerAgent->addInstruction($instruction);
-        }
-        
-        foreach ($this->tools as $tool) {
-            $this->managerAgent->addTool($tool);
-        }
-        
-        foreach ($this->guardrails as $guardrail) {
-            $this->managerAgent->addGuardrail($guardrail);
-        }
-        
-        foreach ($this->context as $key => $value) {
-            $this->managerAgent->addContext($key, $value);
+        // Find or create manager agent
+        $this->managerAgent = $this->findManagerAgent();
+        if (!$this->managerAgent) {
+            throw new \Exception('Manager Agent not found. Please ensure you have a "Manager Agent" in your agents list.');
         }
     }
 
     /**
-     * Direct single-agent execution (original ModelContextProtocol logic)
+     * Execute multi-agent workflow using OpenAI tool calls with ReAct loop
+     */
+    private function executeMultiAgentToolCalls(string $userInput): string
+    {
+        $systemPrompt = $this->buildManagerSystemPrompt();
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userInput]
+        ];
+        
+        $maxIterations = 5; // Prevent infinite loops
+        $iteration = 0;
+        $finalResult = '';
+
+        while ($iteration < $maxIterations) {
+            $iteration++;
+            
+            // Call LLM with current message history
+            $payload = [
+                'model' => $this->model,
+                'messages' => $messages,
+                'tools' => $this->buildAgentToolDefinitions(),
+                'tool_choice' => 'auto',
+                'temperature' => 0,
+                'max_tokens' => $this->maxTokens
+            ];
+
+            $response = $this->callOpenAI($payload);
+            $choice = $response['choices'][0] ?? null;
+            
+            if (!$choice) {
+                break;
+            }
+
+            $message = $choice['message'] ?? [];
+            $toolCalls = $message['tool_calls'] ?? [];
+            $content = $message['content'] ?? '';
+
+            // Add assistant message to conversation
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $content,
+                'tool_calls' => $toolCalls ?: null
+            ];
+
+            if (empty($toolCalls)) {
+                // No more tool calls, we're done
+                $finalResult = $content ?: $finalResult;
+                break;
+            }
+
+            // Execute each tool call and add results to conversation
+            foreach ($toolCalls as $toolCall) {
+                $toolCallId = $toolCall['id'] ?? '';
+                $functionName = $toolCall['function']['name'] ?? '';
+                $arguments = json_decode($toolCall['function']['arguments'] ?? '{}', true);
+                
+                // Execute the agent tool
+                $toolResult = $this->executeAgentTool($functionName, $arguments);
+                $finalResult = $toolResult; // Keep track of latest result
+                
+                // Add tool result to conversation history
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $toolCallId,
+                    'name' => $functionName,
+                    'content' => $toolResult
+                ];
+            }
+        }
+
+        return $finalResult ?: 'No result generated.';
+    }
+
+    /**
+     * Get multi-agent payload with tool calls (for debugging)
+     */
+    private function getMultiAgentPayload(string $userInput): array
+    {
+        $systemPrompt = $this->buildManagerSystemPrompt();
+        
+        $payload = [
+            'model' => $this->model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userInput]
+            ],
+            'tools' => $this->buildAgentToolDefinitions(),
+            'tool_choice' => 'auto',
+            'temperature' => 0,
+            'max_tokens' => $this->maxTokens
+        ];
+
+        return $this->callOpenAI($payload);
+    }
+
+    /**
+     * Get full conversation payload for debugging (shows complete ReAct loop)
+     */
+    public function getFullConversationPayload(string $userInput): array
+    {
+        $systemPrompt = $this->buildManagerSystemPrompt();
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userInput]
+        ];
+        
+        $conversationLog = [];
+        $maxIterations = 5;
+        $iteration = 0;
+
+        while ($iteration < $maxIterations) {
+            $iteration++;
+            
+            $payload = [
+                'model' => $this->model,
+                'messages' => $messages,
+                'tools' => $this->buildAgentToolDefinitions(),
+                'tool_choice' => 'auto',
+                'temperature' => 0,
+                'max_tokens' => $this->maxTokens
+            ];
+
+            $response = $this->callOpenAI($payload);
+            $conversationLog[] = [
+                'iteration' => $iteration,
+                'request' => $payload,
+                'response' => $response
+            ];
+
+            $choice = $response['choices'][0] ?? null;
+            if (!$choice) {
+                break;
+            }
+
+            $message = $choice['message'] ?? [];
+            $toolCalls = $message['tool_calls'] ?? [];
+            $content = $message['content'] ?? '';
+
+            $messages[] = [
+                'role' => 'assistant',
+                'content' => $content,
+                'tool_calls' => $toolCalls ?: null
+            ];
+
+            if (empty($toolCalls)) {
+                break;
+            }
+
+            foreach ($toolCalls as $toolCall) {
+                $toolCallId = $toolCall['id'] ?? '';
+                $functionName = $toolCall['function']['name'] ?? '';
+                $arguments = json_decode($toolCall['function']['arguments'] ?? '{}', true);
+                
+                $toolResult = $this->executeAgentTool($functionName, $arguments);
+                
+                $messages[] = [
+                    'role' => 'tool',
+                    'tool_call_id' => $toolCallId,
+                    'name' => $functionName,
+                    'content' => $toolResult
+                ];
+            }
+        }
+
+        return [
+            'total_iterations' => $iteration,
+            'conversation_log' => $conversationLog,
+            'final_messages' => $messages
+        ];
+    }
+
+    /**
+     * Build system prompt for manager agent (using explicit instructions)
+     */
+    private function buildManagerSystemPrompt(): string
+    {
+        $baseInstructions = implode(' ', $this->instructions);
+        
+        $availableAgents = array_map(function($agent) {
+            return $agent->getName() . ': ' . $agent->getRole();
+        }, $this->getWorkerAgents());
+
+        // Use explicit manager instructions if provided
+        $managerInstructions = '';
+        if (!empty($this->managerInstructions)) {
+            $managerInstructions = implode("\n", $this->managerInstructions);
+        } else {
+            // Minimal fallback if no explicit instructions provided
+            $managerInstructions = "You are a Manager Agent that coordinates specialized agents. " .
+                "Available agents: " . implode(', ', $availableAgents) . ". " .
+                "Use tool calls to delegate tasks to appropriate agents.";
+        }
+
+        return $baseInstructions . "\n\n" . $managerInstructions;
+    }
+
+    /**
+     * Build tool definitions for OpenAI API
+     */
+    private function buildAgentToolDefinitions(): array
+    {
+        $toolDefs = [];
+        
+        foreach ($this->getWorkerAgents() as $agent) {
+            $agentName = strtolower(str_replace(' ', '_', $agent->getName()));
+            
+            if (stripos($agent->getName(), 'weather') !== false) {
+                $toolDefs[] = [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => $agentName,
+                        'description' => 'Get current weather information for any location worldwide',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'location' => [
+                                    'type' => 'string',
+                                    'description' => 'The city/location to get weather for (e.g., "Madrid", "New York", "Tokyo")'
+                                ]
+                            ],
+                            'required' => ['location']
+                        ]
+                    ]
+                ];
+            } else if (stripos($agent->getName(), 'spanish') !== false || stripos($agent->getName(), 'translate') !== false) {
+                $toolDefs[] = [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => $agentName,
+                        'description' => 'Translate text from English to Spanish or Spanish to English',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'text' => [
+                                    'type' => 'string',
+                                    'description' => 'The text to translate'
+                                ],
+                                'direction' => [
+                                    'type' => 'string',
+                                    'description' => 'Translation direction: "to_spanish" or "to_english"',
+                                    'enum' => ['to_spanish', 'to_english']
+                                ]
+                            ],
+                            'required' => ['text']
+                        ]
+                    ]
+                ];
+            } else if (stripos($agent->getName(), 'math') !== false) {
+                $toolDefs[] = [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => $agentName,
+                        'description' => 'Perform mathematical calculations and arithmetic operations',
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'expression' => [
+                                    'type' => 'string',
+                                    'description' => 'The mathematical expression to calculate (e.g., "25 * 8", "15 + 27")'
+                                ]
+                            ],
+                            'required' => ['expression']
+                        ]
+                    ]
+                ];
+            } else {
+                // Generic agent
+                $toolDefs[] = [
+                    'type' => 'function',
+                    'function' => [
+                        'name' => $agentName,
+                        'description' => $agent->getRole(),
+                        'parameters' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'task' => [
+                                    'type' => 'string',
+                                    'description' => 'The specific task for this agent'
+                                ]
+                            ],
+                            'required' => ['task']
+                        ]
+                    ]
+                ];
+            }
+        }
+
+        return $toolDefs;
+    }
+
+    /**
+     * Execute a specific agent tool
+     */
+    private function executeAgentTool(string $functionName, array $arguments): string
+    {
+        $agentName = str_replace('_', ' ', ucwords($functionName, '_'));
+        
+        foreach ($this->getWorkerAgents() as $agent) {
+            if (strcasecmp($agent->getName(), $agentName) === 0) {
+                
+                // Handle different agent types with proper argument mapping
+                if (stripos($agent->getName(), 'weather') !== false) {
+                    $location = $arguments['location'] ?? 'New York';
+                    return $agent->execute("Get weather for " . $location);
+                }
+                
+                if (stripos($agent->getName(), 'spanish') !== false || stripos($agent->getName(), 'translate') !== false) {
+                    $text = $arguments['text'] ?? '';
+                    $direction = $arguments['direction'] ?? 'to_spanish';
+                    
+                    if (empty($text)) {
+                        return "Error: No text provided for translation.";
+                    }
+                    
+                    $task = $direction === 'to_english' ? 
+                        "Translate to English: " . $text : 
+                        "Translate to Spanish: " . $text;
+                    
+                    return $agent->execute($task);
+                }
+                
+                if (stripos($agent->getName(), 'math') !== false) {
+                    $expression = $arguments['expression'] ?? $arguments['task'] ?? '';
+                    return $agent->execute("Calculate: " . $expression);
+                }
+                
+                // Generic task handling
+                $task = $arguments['task'] ?? '';
+                if (empty($task)) {
+                    $task = implode(' ', array_filter($arguments));
+                }
+
+                try {
+                    return $agent->execute($task);
+                } catch (Exception $e) {
+                    return "Error executing {$agent->getName()}: " . $e->getMessage();
+                }
+            }
+        }
+        
+        return "Agent '{$agentName}' not found.";
+    }
+
+    /**
+     * Direct single-agent execution
      */
     private function runDirect(string $userInput): string
     {
-        // Create a simple thread for single-agent support
         $thread = [['role' => 'user', 'content' => $userInput]];
-        
         return $this->runWithThread($thread);
+    }
+
+    /**
+     * Get single-agent payload
+     */
+    private function getSingleAgentPayload(string $userInput): array
+    {
+        $thread = [['role' => 'user', 'content' => $userInput]];
+        return $this->getSingleAgentThreadPayload($thread);
     }
 
     /**
@@ -206,20 +551,20 @@ class SystemAPI
     public function runWithThread(array $thread, string $notesContext = ''): string
     {
         if ($this->isMultiAgent) {
-            // In multi-agent mode, delegate to manager
+            // In multi-agent mode, extract latest message
             $latestMessage = end($thread);
             if ($latestMessage && $latestMessage['role'] === 'user') {
-                return $this->managerAgent->execute($latestMessage['content']);
+                return $this->executeMultiAgentToolCalls($latestMessage['content']);
             }
             return 'No user message found.';
         }
         
-        // Single-agent mode: direct API call logic
+        // Single-agent mode: process thread normally
         return $this->processSingleAgentThread($thread, $notesContext);
     }
-    
+
     /**
-     * Process thread for single-agent mode (original logic)
+     * Process thread for single-agent mode
      */
     private function processSingleAgentThread(array $thread, string $notesContext = ''): string
     {
@@ -234,15 +579,12 @@ class SystemAPI
             }
         }
 
-        // Build system prompt
         $systemPrompt = implode(' ', $this->instructions);
         
-        // Add notes context if provided
         if (!empty($notesContext)) {
             $systemPrompt .= "\n\n" . $notesContext;
         }
         
-        // Add tool definitions to system prompt if tools are available
         if (!empty($this->tools)) {
             $systemPrompt .= "\n\nAvailable tools:\n";
             foreach ($this->tools as $tool) {
@@ -251,13 +593,61 @@ class SystemAPI
             $systemPrompt .= "Use tools when appropriate to help answer questions or complete tasks.";
         }
 
-        // Build messages array following OpenAI format
         $messages = $this->buildMessages($thread, $systemPrompt);
-        
-        // Call OpenAI API
-        $response = $this->callOpenAI($messages);
+        $payload = $this->buildSingleAgentPayload($messages);
+        $response = $this->callOpenAI($payload);
         
         return $this->processResponse($response);
+    }
+
+    /**
+     * Get single-agent thread payload
+     */
+    private function getSingleAgentThreadPayload(array $thread, string $notesContext = ''): array
+    {
+        $systemPrompt = implode(' ', $this->instructions);
+        
+        if (!empty($notesContext)) {
+            $systemPrompt .= "\n\n" . $notesContext;
+        }
+        
+        if (!empty($this->tools)) {
+            $systemPrompt .= "\n\nAvailable tools:\n";
+            foreach ($this->tools as $tool) {
+                $systemPrompt .= $tool->getDefinition() . "\n\n";
+            }
+        }
+
+        $messages = $this->buildMessages($thread, $systemPrompt);
+        $payload = $this->buildSingleAgentPayload($messages);
+        
+        return $this->callOpenAI($payload);
+    }
+
+    /**
+     * Build single-agent payload
+     */
+    private function buildSingleAgentPayload(array $messages): array
+    {
+        $payload = [
+            'model' => $this->model,
+            'messages' => $messages,
+            'max_tokens' => $this->maxTokens,
+            'temperature' => $this->temperature,
+            'top_p' => 1.0,
+            'frequency_penalty' => 0.0,
+            'presence_penalty' => 0.0
+        ];
+        
+        if (!empty($this->tools)) {
+            $payload['tools'] = [];
+            foreach ($this->tools as $tool) {
+                $payload['tools'][] = $tool->getFormat();
+            }
+            $payload['tool_choice'] = 'auto';
+        }
+        
+        return $payload;
     }
 
     /**
@@ -267,13 +657,11 @@ class SystemAPI
     {
         $messages = [];
         
-        // System message first
         $messages[] = [
             'role' => 'system',
             'content' => $systemPrompt
         ];
         
-        // Add conversation history
         foreach ($thread as $message) {
             if (isset($message['role']) && isset($message['content'])) {
                 $messages[] = [
@@ -289,27 +677,8 @@ class SystemAPI
     /**
      * Call OpenAI API
      */
-    private function callOpenAI(array $messages): array
+    private function callOpenAI(array $payload): array
     {
-        $payload = [
-            'model' => $this->model,
-            'messages' => $messages,
-            'max_tokens' => $this->maxTokens,
-            'temperature' => $this->temperature,
-            'top_p' => 1.0,
-            'frequency_penalty' => 0.0,
-            'presence_penalty' => 0.0
-        ];
-        
-        // Add tools to payload if available
-        if (!empty($this->tools)) {
-            $payload['tools'] = [];
-            foreach ($this->tools as $tool) {
-                $payload['tools'][] = $tool->getFormat();
-            }
-            $payload['tool_choice'] = 'auto';
-        }
-        
         $headers = [
             'Content-Type: application/json',
             'Authorization: Bearer ' . $this->apiKey
@@ -362,7 +731,6 @@ class SystemAPI
         $content = $message['content'] ?? '';
         $toolCalls = $message['tool_calls'] ?? [];
 
-        // If there are tool calls, execute them
         if (!empty($toolCalls)) {
             $toolResults = [];
             
@@ -370,12 +738,10 @@ class SystemAPI
                 $functionName = $toolCall['function']['name'] ?? '';
                 $arguments = json_decode($toolCall['function']['arguments'] ?? '{}', true);
                 
-                // Find and execute the tool
                 $toolResult = $this->executeTool($functionName, $arguments);
                 $toolResults[] = "Tool: $functionName\nResult: $toolResult";
             }
             
-            // Combine content with tool results
             $finalResponse = $content;
             if (!empty($toolResults)) {
                 $finalResponse .= "\n\nExecuted tool calls:\n" . implode("\n\n", $toolResults);
@@ -388,7 +754,7 @@ class SystemAPI
     }
 
     /**
-     * Execute a specific tool by name
+     * Execute a specific tool by name (for single-agent mode)
      */
     private function executeTool(string $toolName, array $arguments): string
     {
@@ -404,13 +770,35 @@ class SystemAPI
         
         return "Tool '$toolName' not found.";
     }
+
+    /**
+     * Find manager agent
+     */
+    private function findManagerAgent(): ?object
+    {
+        foreach ($this->agents as $agent) {
+            if (stripos($agent->getName(), 'manager') !== false) {
+                return $agent;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get worker agents (non-manager agents)
+     */
+    private function getWorkerAgents(): array
+    {
+        return array_filter($this->agents, function($agent) {
+            return stripos($agent->getName(), 'manager') === false;
+        });
+    }
     
     /**
      * Set default configuration for future agents
      */
     private function setDefaultAgentConfig(array $config): void
     {
-        // This will be called when Agent class is loaded
         if (class_exists('Agent')) {
             Agent::setDefaultConfig($config);
         }
@@ -440,6 +828,14 @@ class SystemAPI
         return $this->isMultiAgent;
     }
     
+    /**
+     * Get all manager instructions (for debugging)
+     */
+    public function getManagerInstructions(): array
+    {
+        return $this->managerInstructions;
+    }
+
     /**
      * Get all agents (for debugging)
      */
